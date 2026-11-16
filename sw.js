@@ -1,7 +1,7 @@
 'use strict';
 // 修改靜態資源時一併遞增版本；新版本於舊分頁全部關閉後啟用，避免混用資源。
 const CACHE_PREFIX = `repair-shell-${self.registration.scope}-`;
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 const SDK = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 const SHELL = ['./', './index.html', './style.css', './app.js', './config.js', './pwa.js',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png'];
@@ -30,7 +30,10 @@ self.addEventListener('fetch', event => {
   // 僅快取列出的靜態資源；不攔截 Supabase API、POST 或使用者報修資料。
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  const isNavigation = request.mode === 'navigate' && url.href.startsWith(self.registration.scope);
+  // 只把報修系統首頁導向快取殼層，子資料夾（例如 container-loading/）的頁面照常連線取得。
+  const page = url.origin + url.pathname;
+  const isNavigation = request.mode === 'navigate' &&
+    (page === self.registration.scope || page === new URL('./index.html', self.registration.scope).href);
   if (!localUrls.has(url.href) && url.href !== SDK && !isNavigation) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
