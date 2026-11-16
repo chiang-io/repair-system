@@ -31,6 +31,7 @@ python3 -m http.server 8000
 ## 檔案
 
 - `index.html`：貨櫃裝箱模擬頁面。
+- `icons/`、`manifest.webmanifest`：手機「加入主畫面」使用的圖示與名稱（貨櫃裝箱）。
 - `container-loading/index.html`：舊網址，自動轉到首頁。
 - `sw.js`：清除舊版報修系統的離線快取並解除註冊，請勿刪除，直到確定沒有舊使用者。
 
