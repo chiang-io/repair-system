@@ -1,57 +1,359 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#164e46">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="報修登記">
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/icon-192.png" type="image/png">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <title>報修登記｜設備與環境問題通報</title>
-  <link rel="stylesheet" href="./style.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script defer src="./config.js"></script>
-  <script defer src="./app.js"></script>
-  <script defer src="./pwa.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>貨櫃裝箱模擬</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: control rail (container + cargo manifest) beside a 3D loading bay; stacks on phones. */
+:root{
+  --bg:#e9edf0; --surface:#ffffff; --sunk:#f3f5f7; --ink:#14212b; --muted:#5a6a76; --line:#cfd7dd;
+  --accent:#f2a900; --accent-ink:#1a1400; --steel:#1f5f8b; --good:#1d7a4c; --warn:#a85b00; --bad:#b3261e;
+  --stage:#dfe5ea; --floor:#b89a6a;
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e161c; --surface:#16212a; --sunk:#111b22; --ink:#e2e9ee; --muted:#8fa0ad; --line:#2a3a46;
+  --accent:#f5b81f; --accent-ink:#1a1400; --steel:#6fa8d6; --good:#4fc48a; --warn:#f0a040; --bad:#f2786f;
+  --stage:#121c23; --floor:#6e5a3c; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e161c; --surface:#16212a; --sunk:#111b22; --ink:#e2e9ee; --muted:#8fa0ad; --line:#2a3a46;
+  --accent:#f5b81f; --accent-ink:#1a1400; --steel:#6fa8d6; --good:#4fc48a; --warn:#f0a040; --bad:#f2786f;
+  --stage:#121c23; --floor:#6e5a3c; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 32px}
+.wrap{max-width:1440px;margin:0 auto;display:grid;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--f-display);font-weight:700;font-size:2.1rem;letter-spacing:.02em;margin:0;line-height:1;text-wrap:balance}
+h1 small{display:block;font-family:var(--f-mono);font-size:.72rem;font-weight:400;letter-spacing:.12em;color:var(--muted);margin-bottom:6px}
+h2{font-family:var(--f-display);font-weight:600;font-size:1.15rem;letter-spacing:.06em;text-transform:uppercase;margin:0}
+.lede{color:var(--muted);margin:0;max-width:60ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:1080px){.grid{grid-template-columns:minmax(0,640px) minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;display:grid;gap:12px;min-width:0;align-content:start}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.spread{justify-content:space-between}
+.boxes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (min-width:520px){.boxes{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.cbtn{all:unset;cursor:pointer;border:1px solid var(--line);border-radius:4px;padding:8px 10px;display:grid;gap:2px;background:var(--sunk)}
+.cbtn b{font-family:var(--f-display);font-size:1.2rem;letter-spacing:.04em}
+.cbtn span{font-size:.75rem;color:var(--muted)}
+.cbtn[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent);background:var(--surface)}
+.cbtn:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+.spec{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:4px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-size:.72rem;font-weight:500;color:var(--muted);letter-spacing:.06em;background:var(--sunk)}
+tr:last-child td{border-bottom:0}
+td input[type=text],td input[type=number]{width:100%;min-width:80px;font:inherit;font-family:var(--f-mono);font-size:.8rem;padding:4px 5px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)}
+td input.name{font-family:var(--f-body);min-width:96px}
+td.c{text-align:center}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle}
+button{font:inherit;cursor:pointer;border-radius:4px;border:1px solid var(--line);background:var(--sunk);color:var(--ink);padding:6px 12px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+button.ghost{background:none;border-color:transparent;color:var(--muted);padding:4px 6px}
+button.ghost:hover{color:var(--bad)}
+.stage{position:relative;height:440px;border-radius:6px;overflow:hidden;background:var(--stage);border:1px solid var(--line);touch-action:none}
+@media (min-width:1080px){.stage{height:520px}}
+.stage canvas{display:block}
+.tag{position:absolute;font-family:var(--f-mono);font-size:.7rem;letter-spacing:.1em;color:var(--muted);pointer-events:none}
+.tag.tl{top:10px;left:12px}.tag.br{bottom:10px;right:12px}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media (min-width:700px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.kpi{border:1px solid var(--line);border-radius:4px;padding:10px 12px;display:grid;gap:4px;background:var(--sunk)}
+.kpi .k{font-size:.72rem;color:var(--muted);letter-spacing:.06em}
+.kpi .v{font-family:var(--f-mono);font-size:1.35rem;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi .v small{font-size:.75rem;font-weight:400;color:var(--muted)}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--steel)}
+.bar i.hot{background:var(--warn)}
+.pill{display:inline-block;font-size:.72rem;padding:1px 8px;border-radius:999px;border:1px solid currentColor}
+.pill.good{color:var(--good)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}
+input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
+.legend{display:grid;gap:4px}
+.legend div{display:flex;gap:8px;align-items:center;font-size:.85rem}
+.legend .n{margin-left:auto;font-family:var(--f-mono);font-size:.8rem;font-variant-numeric:tabular-nums}
+.note{font-size:.78rem;color:var(--muted);margin:0}
+.two{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:700px){.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.mono{font-family:var(--f-mono)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
 </head>
 <body>
-  <header class="site-header"><a href="./" class="brand"><span class="brand-icon" aria-hidden="true">＋</span> 報修登記</a><span class="header-note">設備・網路・環境</span></header>
-  <main>
-    <div class="pwa-tools"><p id="connection-message" class="message" role="status" aria-live="polite"></p><button id="install-button" type="button" class="secondary" hidden>安裝報修登記</button></div>
-    <section class="intro" aria-labelledby="page-title"><p class="eyebrow">REPAIR REQUEST</p><h1 id="page-title">發現問題，<br class="mobile-break">從這裡開始。</h1><p>記下需要協助的事項，讓每一個問題都有跡可循。</p></section>
-    <section class="panel" aria-labelledby="form-title">
-      <div class="section-heading"><div><p class="eyebrow">01 / 新增通報</p><h2 id="form-title">填寫報修資料</h2></div><span class="small-note">所有欄位皆為必填</span></div>
-      <p class="notice">此為公開示範清單，請使用虛構姓名與地點，勿填寫個資或機密資訊。</p>
-      <form id="repair-form">
-        <fieldset id="form-fields" disabled>
-          <div class="form-grid">
-            <label>報修人<input name="reporter_name" required maxlength="100" placeholder="例如：王小明（示範）" autocomplete="off"></label>
-            <label>地點或部門<input name="location" required maxlength="200" placeholder="例如：示範辦公室 2 樓" autocomplete="off"></label>
-            <label>類別<select name="category" required><option value="" disabled selected>請選擇問題類別</option><option>設備</option><option>網路</option><option>環境</option><option>其他</option></select></label>
-            <label>緊急程度<select name="urgency" required><option>低</option><option selected>中</option><option>高</option></select></label>
-            <label class="full-width">問題說明<textarea name="description" required maxlength="5000" rows="5" placeholder="請描述發生的情況、位置及需要協助的事項。"></textarea><span class="field-hint">最多 5,000 字元</span></label>
-          </div>
-          <div class="form-footer"><span class="small-note">送出後，處理狀態自動設為「待處理」。</span><button type="submit" id="submit-button">送出報修 <span aria-hidden="true">↗</span></button></div>
-        </fieldset>
-      </form>
-      <p id="form-message" class="message" role="status" aria-live="polite"></p>
-      <noscript><p class="message error">請開啟 JavaScript，才能送出報修及讀取清單。</p></noscript>
-    </section>
-    <section class="requests-section" aria-labelledby="list-title">
-      <div class="section-heading"><div><p class="eyebrow">02 / 報修紀錄</p><h2 id="list-title">最近的通報 <span class="count">最新 20 筆</span></h2></div><button type="button" id="refresh-button" class="secondary" disabled>重新整理</button></div>
-      <div class="urgency-filters" role="group" aria-label="依緊急程度篩選報修">
-        <button type="button" class="filter-button" data-urgency="全部" aria-pressed="true">全部</button>
-        <button type="button" class="filter-button" data-urgency="高" aria-pressed="false">高</button>
-        <button type="button" class="filter-button" data-urgency="中" aria-pressed="false">中</button>
-        <button type="button" class="filter-button" data-urgency="低" aria-pressed="false">低</button>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><small id="isoCode">CSMU 000000 · 45G1</small>貨櫃裝箱模擬</h1>
+    </div>
+    <p class="lede">選擇櫃型、填寫貨物清單，系統會依體積、方向限制、堆疊限制與載重上限計算擺放位置，並以 3D 顯示裝載順序。範例貨物均為虛構資料。</p>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="h-c">
+      <h2 id="h-c">1 · 櫃型</h2>
+      <div class="boxes" id="contBtns"></div>
+      <div class="spec" id="contSpec"></div>
+
+      <div class="row spread"><h2>2 · 貨物清單</h2><span class="note">尺寸 cm · 重量 kg</span></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th></th><th>品名</th><th>長</th><th>寬</th><th>高</th><th>單重</th><th>件數</th><th title="此面朝上，只能水平旋轉">直立</th><th title="上方可再堆放貨物">可堆疊</th><th></th></tr></thead>
+          <tbody id="cargoBody"></tbody>
+        </table>
       </div>
-      <p id="list-message" class="message" role="status" aria-live="polite">正在載入清單…</p>
-      <p id="filter-message" class="message" role="status" aria-live="polite"></p>
-      <div id="request-list" class="request-list" aria-busy="true"></div>
+      <div class="row">
+        <button id="addRow" type="button">＋ 新增貨物</button>
+        <button id="loadSample" type="button">還原範例</button>
+        <span style="flex:1"></span>
+        <button id="run" class="primary" type="button">計算裝箱</button>
+      </div>
+      <p class="note">「直立」：此面朝上，只允許水平旋轉。「可堆疊」：取消後，該貨物上方不再放任何貨物。懸空貨物需有 70% 以上底面被支撐。</p>
     </section>
-  </main>
-  <footer>報修登記系統 <span>讓問題被看見，讓處理有紀錄。</span></footer>
+
+    <section class="panel" aria-labelledby="h-v">
+      <div class="row spread"><h2 id="h-v">3 · 裝載結果</h2><span id="cogPill" class="pill good">重心正常</span></div>
+      <div class="kpis" id="kpis"></div>
+      <div class="stage" id="stage">
+        <span class="tag tl">櫃底 ◀ 裝貨方向</span>
+        <span class="tag br">櫃門端 ▶</span>
+      </div>
+      <div class="row">
+        <button id="play" type="button" aria-label="播放裝載順序">▶ 播放</button>
+        <input type="range" id="step" min="0" max="0" value="0" aria-label="顯示到第幾件">
+        <span class="mono" id="stepLbl" style="min-width:9ch;text-align:right">0 / 0</span>
+      </div>
+      <div class="two">
+        <div class="legend" id="legend"></div>
+        <div class="tablewrap" style="max-height:220px;overflow:auto">
+          <table>
+            <thead><tr><th>#</th><th>品名</th><th>位置 x,y,z (cm)</th><th>擺放尺寸</th></tr></thead>
+            <tbody id="seqBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+// ---------- data ----------
+const CONTAINERS = {
+  '20GP':{name:'20 呎標準櫃',iso:'22G1',L:589.8,W:235.2,H:239.3,payload:28200},
+  '40GP':{name:'40 呎標準櫃',iso:'42G1',L:1203.2,W:235.2,H:239.3,payload:26700},
+  '40HQ':{name:'40 呎高櫃',iso:'45G1',L:1203.2,W:235.2,H:269.8,payload:26500},
+  '45HQ':{name:'45 呎高櫃',iso:'L5G1',L:1355.6,W:235.2,H:269.8,payload:27700},
+};
+const COLORS=['#3d7ebf','#e0a526','#3f9e6e','#c4574a','#8a63b8','#2fa3a8','#b8794a','#6b7f8f','#d16fa0','#7aa33a'];
+const SAMPLE=[
+  {name:'家電紙箱',l:60,w:50,h:80,kg:25,qty:60,up:true,stack:true},
+  {name:'木棧板貨',l:120,w:100,h:110,kg:380,qty:10,up:true,stack:false},
+  {name:'五金零件箱',l:40,w:30,h:30,kg:12,qty:150,up:false,stack:true},
+  {name:'布料捆包',l:90,w:60,h:50,kg:45,qty:40,up:false,stack:true},
+  {name:'玻璃器皿箱',l:70,w:45,h:45,kg:18,qty:30,up:true,stack:false},
+];
+let cont='40HQ';
+let cargo=SAMPLE.map(o=>({...o}));
+let result=null;
+
+// ---------- packing (extreme-point heuristic) ----------
+const E=1e-6;
+function orientations(r){
+  const {l,w,h}=r;
+  const list=r.up?[[l,w,h],[w,l,h]]:[[l,w,h],[w,l,h],[l,h,w],[h,l,w],[w,h,l],[h,w,l]];
+  const seen=new Set();return list.filter(o=>{const k=o.join();if(seen.has(k))return false;seen.add(k);return true});
+}
+function overlaps(a,b){return a.x<b.x+b.l-E&&b.x<a.x+a.l-E&&a.y<b.y+b.w-E&&b.y<a.y+a.w-E&&a.z<b.z+b.h-E&&b.z<a.z+a.h-E}
+function supported(box,placed){
+  if(box.z<E)return true;
+  let area=0;
+  for(const p of placed){
+    if(Math.abs(p.z+p.h-box.z)>E)continue;
+    const ix=Math.min(box.x+box.l,p.x+p.l)-Math.max(box.x,p.x);
+    const iy=Math.min(box.y+box.w,p.y+p.w)-Math.max(box.y,p.y);
+    if(ix>E&&iy>E){if(!p.stack)return false;area+=ix*iy;}
+  }
+  return area>=0.7*box.l*box.w-E;
+}
+function inside(pt,b){return pt.x>=b.x-E&&pt.x<b.x+b.l-E&&pt.y>=b.y-E&&pt.y<b.y+b.w-E&&pt.z>=b.z-E&&pt.z<b.z+b.h-E}
+function packOnce(C,items,ord){
+  const placed=[],missed=[];let pts=[{x:0,y:0,z:0}],kg=0,failKey=null;
+  for(const it of items){
+    if(kg+it.kg>C.payload+E||failKey===it.type){missed.push(it);continue}
+    pts.sort(ord);
+    let ok=null;
+    outer:for(let i=0;i<pts.length;i++){const p=pts[i];
+      for(const [l,w,h] of it.oris){
+        if(p.x+l>C.L+E||p.y+w>C.W+E||p.z+h>C.H+E)continue;
+        const b={x:p.x,y:p.y,z:p.z,l,w,h};
+        let hit=false;for(const q of placed){if(overlaps(b,q)){hit=true;break}}
+        if(hit||!supported(b,placed))continue;
+        ok=b;break outer;
+      }
+    }
+    if(!ok){missed.push(it);failKey=it.type;continue}
+    failKey=null;
+    ok.type=it.type;ok.stack=it.stack;ok.kg=it.kg;placed.push(ok);kg+=it.kg;
+    const cand=[{x:ok.x+ok.l,y:ok.y,z:ok.z},{x:ok.x,y:ok.y+ok.w,z:ok.z},{x:ok.x,y:ok.y,z:ok.z+ok.h}];
+    pts=pts.concat(cand).filter(pt=>pt.x<C.L-E&&pt.y<C.W-E&&pt.z<C.H-E&&!placed.some(b=>inside(pt,b)));
+    const seen=new Set();pts=pts.filter(pt=>{const k=pt.x.toFixed(3)+','+pt.y.toFixed(3)+','+pt.z.toFixed(3);if(seen.has(k))return false;seen.add(k);return true});
+  }
+  return {placed,missed,kg,vol:placed.reduce((s,b)=>s+b.l*b.w*b.h,0)};
+}
+function pack(C,rows){
+  const items=[];
+  rows.forEach((r,t)=>{const oris=orientations(r);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
+  // item order × free-point order; keep the run that loads the most volume
+  const sorts=[['體積大者優先',(a,b)=>b.vol-a.vol||a.type-b.type],
+    ['可堆疊者優先',(a,b)=>(b.stack-a.stack)||b.vol-a.vol||a.type-b.type],
+    ['底面積大者優先',(a,b)=>b.base-a.base||b.vol-a.vol||a.type-b.type]];
+  const ords=[['先鋪滿櫃底',(a,b)=>a.z-b.z||a.x-b.x||a.y-b.y],['由櫃底牆往門疊',(a,b)=>a.x-b.x||a.z-b.z||a.y-b.y]];
+  let best=null;
+  for(const [on,o] of ords)for(const [sn,s] of sorts){const r=packOnce(C,items.slice().sort(s),o);r.strategy=sn+'・'+on;
+    if(!best||r.vol>best.vol+E||(Math.abs(r.vol-best.vol)<E&&r.placed.length>best.placed.length))best=r}
+  best.total=items.length;best.runs=sorts.length*ords.length;return best;
+}
+
+// ---------- UI ----------
+const $=id=>document.getElementById(id);
+const fmt=(n,d=0)=>n.toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d});
+function renderContainers(){
+  $('contBtns').innerHTML=Object.entries(CONTAINERS).map(([k,c])=>`<button type="button" class="cbtn" data-k="${k}" aria-pressed="${k===cont}"><b>${k}</b><span>${c.name}</span></button>`).join('');
+  const C=CONTAINERS[cont];
+  $('contSpec').textContent=`內尺寸 ${fmt(C.L*10)} × ${fmt(C.W*10)} × ${fmt(C.H*10)} mm · 容積 ${fmt(C.L*C.W*C.H/1e6,1)} m³ · 最大載重 ${fmt(C.payload)} kg · ISO ${C.iso}`;
+  $('isoCode').textContent=`CSMU 482917 · ${C.iso}`;
+}
+$('contBtns').addEventListener('click',e=>{const b=e.target.closest('.cbtn');if(!b)return;cont=b.dataset.k;renderContainers();run()});
+
+function renderCargo(){
+  $('cargoBody').innerHTML=cargo.map((r,i)=>`<tr data-i="${i}">
+    <td><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span></td>
+    <td><input class="name" type="text" id="n${i}" data-f="name" value="${r.name.replace(/"/g,'&quot;')}" aria-label="品名"></td>
+    ${['l','w','h','kg','qty'].map(f=>`<td><input type="number" id="${f}${i}" data-f="${f}" min="1" step="${f==='kg'?'0.1':'1'}" value="${r[f]}" aria-label="${f}"></td>`).join('')}
+    <td class="c"><input type="checkbox" id="up${i}" data-f="up" ${r.up?'checked':''} aria-label="直立"></td>
+    <td class="c"><input type="checkbox" id="st${i}" data-f="stack" ${r.stack?'checked':''} aria-label="可堆疊"></td>
+    <td><button type="button" class="ghost" data-del="${i}" aria-label="刪除">✕</button></td></tr>`).join('');
+}
+$('cargoBody').addEventListener('input',e=>{
+  const t=e.target,tr=t.closest('tr');if(!tr||!t.dataset.f)return;const r=cargo[+tr.dataset.i],f=t.dataset.f;
+  if(t.type==='checkbox')r[f]=t.checked;else if(f==='name')r[f]=t.value;else{const v=parseFloat(t.value);r[f]=f==='qty'?Math.max(0,Math.floor(v||0)):Math.max(0.1,v||0)}
+});
+$('cargoBody').addEventListener('click',e=>{const d=e.target.closest('[data-del]');if(!d)return;cargo.splice(+d.dataset.del,1);renderCargo();run()});
+$('addRow').onclick=()=>{cargo.push({name:'新貨物',l:50,w:40,h:40,kg:15,qty:10,up:false,stack:true});renderCargo()};
+$('loadSample').onclick=()=>{cargo=SAMPLE.map(o=>({...o}));renderCargo();run()};
+$('run').onclick=run;
+
+function run(){
+  stopPlay();
+  const C=CONTAINERS[cont];
+  const rows=cargo.filter(r=>r.l>0&&r.w>0&&r.h>0&&r.qty>0);
+  // keep color index stable to the manifest row
+  const map=rows.map(r=>cargo.indexOf(r));
+  const t0=performance.now();
+  result=pack(C,rows);result.ms=performance.now()-t0;
+  result.placed.forEach(b=>b.row=map[b.type]);result.missed.forEach(m=>m.row=map[m.type]);
+  renderResult();buildScene();
+  $('step').max=result.placed.length;$('step').value=result.placed.length;showStep(result.placed.length);
+}
+
+function renderResult(){
+  const C=CONTAINERS[cont],R=result;
+  const volPct=R.vol/(C.L*C.W*C.H)*100,kgPct=R.kg/C.payload*100;
+  let cog=0;if(R.kg>0){cog=R.placed.reduce((s,b)=>s+(b.x+b.l/2)*b.kg,0)/R.kg}
+  const off=R.kg>0?(cog-C.L/2)/C.L*100:0;
+  const kpi=(k,v,pct)=>`<div class="kpi"><span class="k">${k}</span><span class="v">${v}</span>${pct==null?'':`<div class="bar"><i class="${pct>95?'hot':''}" style="width:${Math.min(100,pct)}%"></i></div>`}</div>`;
+  $('kpis').innerHTML=
+    kpi('已裝件數',`${fmt(R.placed.length)}<small> / ${fmt(R.total)}</small>`,R.total?R.placed.length/R.total*100:0)+
+    kpi('容積利用率',`${fmt(volPct,1)}<small> %</small>`,volPct)+
+    kpi('載重',`${fmt(R.kg)}<small> kg · ${fmt(kgPct,0)}%</small>`,kgPct)+
+    kpi('重心偏移',`${off>=0?'+':''}${fmt(off,1)}<small> % 櫃長</small>`,null);
+  const p=$('cogPill');const a=Math.abs(off);
+  p.className='pill '+(R.placed.length===0?'warn':a<=10?'good':a<=20?'warn':'bad');
+  p.textContent=R.placed.length===0?'尚無貨物':a<=10?'重心正常':a<=20?'重心偏向'+(off>0?'櫃門':'櫃底'):'重心嚴重偏移';
+  // legend
+  const byRow={};cargo.forEach((r,i)=>byRow[i]={in:0,out:0});
+  R.placed.forEach(b=>byRow[b.row].in++);R.missed.forEach(m=>byRow[m.row].out++);
+  $('legend').innerHTML='<h2 style="font-size:.95rem">各品項裝載</h2>'+cargo.map((r,i)=>`<div><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span>${esc(r.name)}<span class="n">${byRow[i].in} / ${byRow[i].in+byRow[i].out}${byRow[i].out?` <span class="pill warn">未裝 ${byRow[i].out}</span>`:''}</span></div>`).join('')+
+    `<p class="note">比較 ${R.runs} 種擺放策略，採用「${R.strategy}」（裝載體積最大）。計算耗時 ${fmt(R.ms,0)} ms。</p>`;
+  $('seqBody').innerHTML=R.placed.map((b,i)=>`<tr><td>${i+1}</td><td><span class="sw" style="background:${COLORS[b.row%COLORS.length]}"></span> ${esc(cargo[b.row].name)}</td><td class="mono">${fmt(b.x)}, ${fmt(b.y)}, ${fmt(b.z)}</td><td class="mono">${fmt(b.l)}×${fmt(b.w)}×${fmt(b.h)}</td></tr>`).join('')||'<tr><td colspan="4" class="note">沒有可裝載的貨物</td></tr>';
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// ---------- 3D ----------
+const stage=$('stage');let renderer,scene,camera,controls,group,boxMeshes=[],ok3d=true;
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function init3d(){
+  if(!window.THREE){ok3d=false;stage.insertAdjacentHTML('beforeend','<p class="note" style="padding:40px 16px">3D 元件載入失敗，仍可查看右下方裝載順序表。</p>');return}
+  renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+  stage.prepend(renderer.domElement);
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(40,1,1,20000);
+  controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
+  scene.add(new THREE.AmbientLight(0xffffff,.62));
+  const d=new THREE.DirectionalLight(0xffffff,.55);d.position.set(-1,2,1.4);scene.add(d);
+  const d2=new THREE.DirectionalLight(0xffffff,.2);d2.position.set(1,1,-1);scene.add(d2);
+  new ResizeObserver(resize).observe(stage);resize();applyTheme();
+  const loop=()=>{controls.update();renderer.render(scene,camera);requestAnimationFrame(loop)};loop();
+}
+function resize(){if(!renderer)return;const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}
+function applyTheme(){if(!scene)return;scene.background=new THREE.Color(cssVar('--stage'));if(result)buildScene(true)}
+function buildScene(keepCam){
+  if(!ok3d||!scene)return;
+  if(group)scene.remove(group);group=new THREE.Group();scene.add(group);boxMeshes=[];
+  const C=CONTAINERS[cont],ox=-C.L/2,oz=-C.W/2;
+  // floor
+  const floor=new THREE.Mesh(new THREE.BoxGeometry(C.L,2,C.W),new THREE.MeshLambertMaterial({color:cssVar('--floor')}));
+  floor.position.set(0,-1,0);group.add(floor);
+  // shell edges
+  const shell=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(C.L,C.H,C.W)),new THREE.LineBasicMaterial({color:cssVar('--steel')}));
+  shell.position.set(0,C.H/2,0);group.add(shell);
+  // far wall + back wall faint
+  const wallMat=new THREE.MeshLambertMaterial({color:cssVar('--steel'),transparent:true,opacity:.08,side:THREE.DoubleSide});
+  const back=new THREE.Mesh(new THREE.PlaneGeometry(C.W,C.H),wallMat);back.rotation.y=Math.PI/2;back.position.set(ox,C.H/2,0);group.add(back);
+  const side=new THREE.Mesh(new THREE.PlaneGeometry(C.L,C.H),wallMat);side.position.set(0,C.H/2,oz);group.add(side);
+  // door frame
+  const door=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(C.W,C.H)),new THREE.LineBasicMaterial({color:cssVar('--accent')}));
+  door.rotation.y=Math.PI/2;door.position.set(C.L/2,C.H/2,0);group.add(door);
+  const edgeCol=new THREE.Color(cssVar('--ink'));
+  for(const b of result.placed){
+    const m=new THREE.Mesh(new THREE.BoxGeometry(b.l,b.h,b.w),new THREE.MeshLambertMaterial({color:COLORS[b.row%COLORS.length]}));
+    m.position.set(ox+b.x+b.l/2,b.z+b.h/2,oz+b.y+b.w/2);
+    const e=new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry),new THREE.LineBasicMaterial({color:edgeCol,transparent:true,opacity:.35}));
+    m.add(e);group.add(m);boxMeshes.push(m);
+  }
+  if(!keepCam){const r=Math.max(C.L,400);camera.position.set(-r*.55,r*.55,r*.85);controls.target.set(0,C.H/3,0);controls.update()}
+  showStep(+$('step').value);
+}
+function showStep(n){
+  boxMeshes.forEach((m,i)=>m.visible=i<n);
+  $('stepLbl').textContent=`${n} / ${result?result.placed.length:0}`;
+  const rows=$('seqBody').rows;for(let i=0;i<rows.length;i++)rows[i].style.opacity=i<n||!result.placed.length?1:.4;
+}
+$('step').addEventListener('input',e=>{stopPlay();showStep(+e.target.value)});
+let timer=null;
+function stopPlay(){if(timer){clearInterval(timer);timer=null;$('play').textContent='▶ 播放'}}
+$('play').onclick=()=>{
+  if(timer){stopPlay();return}
+  const s=$('step'),max=+s.max;if(!max)return;
+  if(+s.value>=max)s.value=0;
+  const per=Math.max(16,Math.min(120,6000/max));
+  $('play').textContent='❚❚ 暫停';
+  timer=setInterval(()=>{const v=Math.min(max,+s.value+1);s.value=v;showStep(v);if(v>=max)stopPlay()},per);
+};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
+new MutationObserver(applyTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+renderContainers();renderCargo();init3d();run();
+</script>
 </body>
 </html>
