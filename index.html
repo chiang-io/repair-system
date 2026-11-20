@@ -59,7 +59,7 @@ th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;white-
 th{font-size:.72rem;font-weight:500;color:var(--muted);letter-spacing:.06em;background:var(--sunk)}
 tr:last-child td{border-bottom:0}
 td input[type=text],td input[type=number]{width:100%;min-width:80px;font:inherit;font-family:var(--f-mono);font-size:.8rem;padding:4px 5px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)}
-td input.name{font-family:var(--f-body);min-width:96px}
+td input.name{font-family:var(--f-body);min-width:190px}
 td.c{text-align:center}
 .sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle}
 select{font:inherit;border-radius:4px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:6px 8px}
@@ -67,9 +67,12 @@ button{font:inherit;cursor:pointer;border-radius:4px;border:1px solid var(--line
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
 button.ghost{background:none;border-color:transparent;color:var(--muted);padding:4px 6px}
 button.ghost:hover{color:var(--bad)}
+button.del{color:var(--bad);font-weight:700;padding:4px 8px}
 .stage{position:relative;height:440px;border-radius:6px;overflow:hidden;background:var(--stage);border:1px solid var(--line);touch-action:none}
 @media (min-width:1080px){.stage{height:520px}}
 .stage canvas{display:block}
+.addbar{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:4px;background:var(--sunk)}
+.addbar select#catSel{flex:1;min-width:0;max-width:100%}
 .viewbtn{position:absolute;top:10px;right:12px;font-size:.78rem;padding:4px 10px;background:var(--surface);opacity:.92}
 .tag{position:absolute;font-family:var(--f-mono);font-size:.7rem;letter-spacing:.1em;color:var(--muted);pointer-events:none}
 .tag.tl{top:10px;left:12px}.tag.br{bottom:10px;right:12px}
@@ -111,12 +114,13 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
       <div class="boxes" id="contBtns"></div>
       <div class="spec" id="contSpec"></div>
       <div class="row">
-        <label for="gap">物品間隙</label>
+        <label for="gap">前後間隙</label>
         <input type="number" id="gap" min="0" max="50" step="1" value="10" style="width:72px">
-        <span class="note">cm（貨物和貨物之間，靠牆那面不留）</span>
-        <label for="gapZ" style="margin-left:8px">上下間隙</label>
-        <input type="number" id="gapZ" min="0" max="50" step="1" value="0" style="width:72px">
         <span class="note">cm</span>
+        <label for="gapY" style="margin-left:8px">左右間隙</label>
+        <input type="number" id="gapY" min="0" max="50" step="1" value="5" style="width:72px">
+        <span class="note">cm（只留在貨物和貨物之間，靠牆那面不留）</span>
+        <input type="hidden" id="gapZ" value="0"><!-- 上下不留間隙：上層直接壓在下層上 -->
       </div>
       <div class="row">
         <input type="checkbox" id="spread" checked>
@@ -126,15 +130,29 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
       <div class="row spread"><h2>2 · 貨物清單</h2><span class="note">尺寸 cm · 重量 kg</span></div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th></th><th>品名</th><th>長</th><th>寬</th><th>高</th><th title="一件（一捆、一板或一箱）的重量">每件重</th><th>件數</th><th title="此面朝上，只能水平旋轉">直立</th><th title="上方可再堆放貨物">可堆疊</th><th title="只能放在貨櫃地板，不放在其他貨物上">放地板</th><th title="這種貨物要放在貨櫃的哪一段，用來調整配重">位置</th><th></th></tr></thead>
+          <thead><tr><th></th><th></th><th>品名</th><th>長</th><th>寬</th><th>高</th><th title="一件（一捆、一板或一箱）的重量">每件重</th><th>件數</th><th title="此面朝上，只能水平旋轉">直立</th><th title="上方可再堆放貨物">可堆疊</th><th title="只能放在貨櫃地板，不放在其他貨物上">放地板</th><th title="這種貨物要放在貨櫃的哪一段，用來調整配重">位置</th></tr></thead>
           <tbody id="cargoBody"></tbody>
         </table>
       </div>
+      <div class="addbar">
+        <div class="row">
+          <label for="catSel"><b>從常用品項加入</b></label>
+          <select id="catSel"></select>
+        </div>
+        <div class="row">
+          <input type="number" id="catQty" min="1" step="1" value="10" aria-label="數量" style="width:90px">
+          <select id="catUnit" aria-label="單位"><option value="bundle">捆／板</option><option value="pcs">支</option></select>
+          <button id="catAdd" type="button" class="primary">加入清單</button>
+          <button id="clearRows" type="button">清空清單</button>
+        </div>
+        <p class="note" id="catInfo"></p>
+      </div>
       <div class="row">
-        <button id="addRow" type="button">＋ 新增貨物</button>
+        <button id="addRow" type="button">＋ 自訂貨物</button>
         <select id="preset" aria-label="選擇範例">
           <option value="tb1150423007actual">1150423007 第1櫃：照片的實際裝法</option>
           <option value="tb1150423007">1150423007 第1櫃：系統自動排</option>
+          <option value="standards">範例：主架＋橫桿＋斜桿一櫃</option>
           <option value="topbeam">範例：Top Beam 一櫃</option>
           <option value="boxes">範例：一般紙箱</option>
         </select>
@@ -211,7 +229,12 @@ const ACTUAL_1150423007=(()=>{
   return L;
 })();
 const TB_1150423007_ACTUAL=TB_1150423007.map(r=>({...r,floor:false,pref:'auto'}));
-const PRESETS={tb1150423007actual:{cont:'40HQ',rows:TB_1150423007_ACTUAL,actual:ACTUAL_1150423007},tb1150423007:{cont:'40HQ',rows:TB_1150423007},topbeam:{cont:'40GP',rows:TOPBEAM},boxes:{cont:'40HQ',rows:SAMPLE}};
+// 主架 φ60.2（100 支/捆 = 10 支寬 × 10 層）：捆長 ≈ 桿長 + 25 cm，寬 115、高 95（113 年裝櫃明細）；每捆重 = 存貨表單重 × 100
+// 斜桿 φ48.6（100 支/捆）：捆寬 60、高 70，長度依規格（0.9x1.5 → 205、1.5x1.5 → 225；歷年裝櫃明細最常見）
+const STANDARDS=[['主架 1.5m',175,115,95,9.68,8],['主架 1.0m',125,115,95,6.8,4],['平主架 3.0m',305,115,95,17.4,4],
+  ['斜桿 1.5x1.5m',225,60,70,6.8,6],['斜桿 0.9x1.5m',205,60,70,5.98,4],['橫桿 1.8m',180,60,70,5.5,3]].map(([n,l,w,h,kg,q])=>
+  ({name:`${n}（100支/捆）`,l,w,h,kg:+(kg*100).toFixed(0),qty:q,up:true,stack:true,pref:n.startsWith('平主架')?'door':'auto'}));   // 最重的平主架靠門口，重心較平均
+const PRESETS={standards:{cont:'40HQ',rows:STANDARDS},tb1150423007actual:{cont:'40HQ',rows:TB_1150423007_ACTUAL,actual:ACTUAL_1150423007},tb1150423007:{cont:'40HQ',rows:TB_1150423007},topbeam:{cont:'40GP',rows:TOPBEAM},boxes:{cont:'40HQ',rows:SAMPLE}};
 let cont='40HQ';
 let cargo=[];
 let result=null;
@@ -278,9 +301,9 @@ function packOnce(C,items,ord){
   }
   return {placed,missed,kg,vol:placed.reduce((s,b)=>s+b.l*b.w*b.h,0)};
 }
-function pack(C,rows,gap=0,gapZ=0){
+function pack(C,rows,gap=0,gapZ=0,gapY=gap){
   const items=[];
-  rows.forEach((r,t)=>{const oris=orientations(r).map(([l,w,h])=>[l+gap,w+gap,h+gapZ]);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,floor:!!r.floor,pref:r.pref||'auto',vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
+  rows.forEach((r,t)=>{const oris=orientations(r).map(([l,w,h])=>[l+gap,w+gapY,h+gapZ]);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,floor:!!r.floor,pref:r.pref||'auto',vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
   // item order × free-point order; keep the run that loads the most volume
   // 「放地板」的貨物一律先裝
   // 有位置偏好的貨物接著先裝，才搶得到指定位置
@@ -291,17 +314,21 @@ function pack(C,rows,gap=0,gapZ=0){
   const ords=[['先鋪滿地板',(a,b)=>a.z-b.z||a.x-b.x||a.y-b.y],['從最裡面往門口疊',(a,b)=>a.x-b.x||a.z-b.z||a.y-b.y],
     ['從最裡面一排一排放',(a,b)=>a.x-b.x||a.y-b.y||a.z-b.z]];
   // 貨櫃也放大一個間隙：貨物之間有間隙，但最後一件可以貼到牆
-  const CG={...C,L:C.L+gap,W:C.W+gap,H:C.H+gapZ};
+  const CG={...C,L:C.L+gap,W:C.W+gapY,H:C.H+gapZ};
   let best=null;
-  for(const [on,o] of ords)for(const [sn,s] of sorts){const r=packOnce(CG,items.slice().sort(s),o);r.strategy=sn+'・'+on;
+  // 件數不多時，另外試「先橫放」（例如長捆橫跨貨櫃寬度）
+  const flips=items.length<=150?[false,true]:[false];
+  for(const flip of flips)for(const [on,o] of ords)for(const [sn,s] of sorts){
+    const its=flip?items.map(it=>({...it,oris:it.oris.slice().reverse()})):items;
+    const r=packOnce(CG,its.slice().sort(s),o);r.strategy=sn+'・'+on+(flip?'・先橫放':'');
     // 比較：裝載體積 → 件數 → 重物越低越好（重量加權高度）
     r.low=r.placed.reduce((t,q)=>t+q.kg*q.z,0);
     const tol=Math.max(1,(best?best.vol:0)*1e-6);
     if(!best||r.vol>best.vol+tol||(Math.abs(r.vol-best.vol)<=tol&&(r.placed.length>best.placed.length||(r.placed.length===best.placed.length&&r.low<best.low-E))))best=r}
   // 每件佔用的空間含間隙；換回實際尺寸。貨物貼齊最裡面與左邊，間隙留在門口側、右側與上方
-  best.placed.forEach(b=>{b.l-=gap;b.w-=gap;b.h-=gapZ;});
+  best.placed.forEach(b=>{b.l-=gap;b.w-=gapY;b.h-=gapZ;});
   best.vol=best.placed.reduce((t,b)=>t+b.l*b.w*b.h,0);
-  best.total=items.length;best.runs=sorts.length*ords.length;return best;
+  best.total=items.length;best.runs=sorts.length*ords.length*flips.length;return best;
 }
 
 // ---------- UI ----------
@@ -318,20 +345,68 @@ $('contBtns').addEventListener('click',e=>{const b=e.target.closest('.cbtn');if(
 const PREFS=[['auto','自動'],['back','最裡面'],['mid','中間'],['door','靠門口']];
 function renderCargo(){
   $('cargoBody').innerHTML=cargo.map((r,i)=>`<tr data-i="${i}">
+    <td><button type="button" class="ghost del" data-del="${i}" aria-label="刪除 ${esc(r.name)}" title="刪除這一列">✕</button></td>
     <td><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span></td>
     <td><input class="name" type="text" id="n${i}" data-f="name" value="${r.name.replace(/"/g,'&quot;')}" aria-label="品名"></td>
     ${['l','w','h','kg','qty'].map(f=>`<td><input type="number" id="${f}${i}" data-f="${f}" min="1" step="${f==='kg'?'0.1':'1'}" value="${r[f]}" aria-label="${f}"></td>`).join('')}
     <td class="c"><input type="checkbox" id="up${i}" data-f="up" ${r.up?'checked':''} aria-label="直立"></td>
     <td class="c"><input type="checkbox" id="st${i}" data-f="stack" ${r.stack?'checked':''} aria-label="可堆疊"></td>
     <td class="c"><input type="checkbox" id="fl${i}" data-f="floor" ${r.floor?'checked':''} aria-label="放地板"></td>
-    <td><select id="pf${i}" data-f="pref" aria-label="位置">${PREFS.map(([v,t])=>`<option value="${v}"${(r.pref||'auto')===v?' selected':''}>${t}</option>`).join('')}</select></td>
-    <td><button type="button" class="ghost" data-del="${i}" aria-label="刪除">✕</button></td></tr>`).join('');
+    <td><select id="pf${i}" data-f="pref" aria-label="位置">${PREFS.map(([v,t])=>`<option value="${v}"${(r.pref||'auto')===v?' selected':''}>${t}</option>`).join('')}</select></td></tr>`).join('');
 }
 $('cargoBody').addEventListener('input',e=>{
   const t=e.target,tr=t.closest('tr');if(!tr||!t.dataset.f)return;const r=cargo[+tr.dataset.i],f=t.dataset.f;
   if(t.type==='checkbox')r[f]=t.checked;else if(t.tagName==='SELECT'){r[f]=t.value;run();}else if(f==='name')r[f]=t.value;else{const v=parseFloat(t.value);r[f]=f==='qty'?Math.max(0,Math.floor(v||0)):Math.max(0.1,v||0)}
 });
 $('cargoBody').addEventListener('click',e=>{const d=e.target.closest('[data-del]');if(!d)return;cargo.splice(+d.dataset.del,1);renderCargo();run()});
+// ---------- 常用品項 ----------
+// 包裝規格整理自歷年裝櫃明細，單重取自存貨表；pcs = 每捆支數。實際包裝不同時，加入後可在清單裡改
+const CATALOG=[
+  {group:'Top Beam（80 支/捆，長 × 110 × 55 cm）',items:[['1.2',6.85],['1.5',8.21],['1.8',9.85],['2.1',11.5],['2.4',13.96],['2.7',14.78],['3.0',16.42],['3.3',19.32],['3.6',19.7],['4.2',23.8]]
+    .map(([m,u])=>({name:`Top Beam ${m}m`,pcs:80,unit:u,l:Math.round(m*100),w:110,h:55,perLayer:8,tb:true}))},
+  {group:'主架 φ60.2（100 支/捆，長 + 25 × 115 × 95 cm）',items:[['1.0',6.8],['1.5',9.68],['3.0',18.45]]
+    .map(([m,u])=>({name:`主架 ${m}m`,pcs:100,unit:u,l:Math.round(m*100)+25,w:115,h:95,perLayer:10}))},
+  {group:'平主架 φ60.2（100 支/捆，長 + 5 × 115 × 95 cm）',items:[['1.0',5.75],['1.5',8.63],['3.0',17.4]]
+    .map(([m,u])=>({name:`平主架 ${m}m`,pcs:100,unit:u,l:Math.round(m*100)+5,w:115,h:95,perLayer:10}))},
+  {group:'橫桿 φ48.6（100 支/捆，長 × 60 × 70 cm）',items:[['0.6',2.4],['0.9',3.18],['1.2',3.86],['1.5',4.7],['1.8',5.5],['2.4',7.32],['3.0',8.88]]
+    .map(([m,u])=>({name:`橫桿 ${m}m`,pcs:100,unit:u,l:Math.round(m*100),w:60,h:70,perLayer:10}))},
+  {group:'斜桿 φ48.6（100 支/捆，× 60 × 70 cm）',items:[['0.6x1.5',5.62,180],['0.9x1.5',5.98,205],['1.5x1.5',6.8,225],['1.8x1.5',7.32,250],['2.4x1.5',8.66,300]]
+    .map(([m,u,l])=>({name:`斜桿 ${m}m`,pcs:100,unit:u,l,w:60,h:70,perLayer:10}))},
+  {group:'棧板（重量請自己改）',items:[{name:'棧板',pcs:1,unit:1000,l:110,w:110,h:100,pallet:true}]},
+];
+const CAT_ITEMS=CATALOG.flatMap(g=>g.items);
+$('catSel').innerHTML=CATALOG.map(g=>`<optgroup label="${g.group}">${g.items.map(it=>`<option value="${CAT_ITEMS.indexOf(it)}">${it.name}</option>`).join('')}</optgroup>`).join('');
+function catInfo(){
+  const it=CAT_ITEMS[+$('catSel').value];
+  $('catInfo').textContent=it.pallet?`一板 ${it.l}×${it.w}×${it.h} cm，預設 ${fmt(it.unit)} kg，加入後請改成實際重量。`
+    :`一捆 ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg，每捆約 ${fmt(it.unit*it.pcs)} kg。`;
+  $('catUnit').disabled=!!it.pallet;if(it.pallet)$('catUnit').value='bundle';
+}
+$('catSel').addEventListener('change',catInfo);catInfo();
+function addCatalog(it,count,full=true){
+  const pcs=full?it.pcs:count;   // 零捆：支數不足一捆
+  const label=it.pallet?it.name:`${it.name}（${pcs}支/捆）`;
+  // 零捆：依支數算層數決定高度；TB 40 支以內只有一小捆（4 支寬，約 55 cm 寬，每層約 5.5 cm）
+  let w=it.w,h=it.h;
+  if(!full&&!it.pallet){
+    if(it.tb&&pcs<=40){w=55;h=Math.max(20,Math.round(Math.ceil(pcs/4)*5.5))}
+    else{const layersFull=it.pcs/it.perLayer;h=Math.max(15,Math.round(Math.ceil(pcs/it.perLayer)*it.h/layersFull))}
+  }
+  const kg=+(it.unit*pcs).toFixed(1);
+  const same=cargo.find(r=>r.name===label&&r.l===it.l&&r.w===w&&r.h===h);
+  if(same&&full){same.qty+=count;return}
+  cargo.push({name:label,l:it.l,w,h,kg,qty:full?count:1,up:true,stack:!it.pallet,floor:false,pref:'auto'});
+}
+$('catAdd').onclick=()=>{
+  const it=CAT_ITEMS[+$('catSel').value],n=Math.max(1,Math.floor(+$('catQty').value||0));
+  if($('catUnit').value==='pcs'&&!it.pallet){
+    const full=Math.floor(n/it.pcs),rem=n%it.pcs;
+    if(full)addCatalog(it,full);
+    if(rem)addCatalog(it,rem,false);
+  }else addCatalog(it,n);
+  renderCargo();run();
+};
+$('clearRows').onclick=()=>{cargo=[];renderCargo();run();};
 $('addRow').onclick=()=>{cargo.push({name:'新貨物',l:50,w:40,h:40,kg:15,qty:10,up:false,stack:true});renderCargo()};
 $('loadSample').onclick=()=>{const p=PRESETS[$('preset').value];cont=p.cont;cargo=p.rows.map(o=>({...o}));renderContainers();renderCargo();run();if(p.actual)applyLayout(p.actual)};
 // 直接套用指定位置（例如照片的實際裝法），不經過自動計算
@@ -347,7 +422,7 @@ function applyLayout(lay){
   $('step').max=R.placed.length;$('step').value=R.placed.length;showStep(R.placed.length);
 }
 $('run').onclick=run;
-['gap','gapZ'].forEach(id=>$(id).addEventListener('change',run));
+['gap','gapY','gapZ'].forEach(id=>$(id).addEventListener('change',run));
 $('spread').addEventListener('change',()=>{if(result&&result.fixed)applyLayout(result.layout);else run();});
 // 把貨物沿長度分成幾段（前後不重疊的一疊一疊），多出來的長度平均分到每段之間；第一段貼最裡面、最後一段貼門口
 function spreadSections(placed,L){
@@ -372,8 +447,8 @@ function run(){
   // keep color index stable to the manifest row
   const map=rows.map(r=>cargo.indexOf(r));
   const t0=performance.now();
-  const gap=Math.max(0,+$('gap').value||0),gapZ=Math.max(0,+$('gapZ').value||0);
-  result=pack(C,rows,gap,gapZ);result.gap=gap;result.gapZ=gapZ;result.ms=performance.now()-t0;
+  const gap=Math.max(0,+$('gap').value||0),gapY=Math.max(0,+$('gapY').value||0),gapZ=Math.max(0,+$('gapZ').value||0);
+  result=pack(C,rows,gap,gapZ,gapY);result.gap=gap;result.gapY=gapY;result.gapZ=gapZ;result.ms=performance.now()-t0;
   result.placed.forEach(b=>b.row=map[b.type]);result.missed.forEach(m=>m.row=map[m.type]);
   if($('spread').checked)spreadSections(result.placed,C.L);
   // 依實際裝貨順序排列：由最裡面往門口，同一段由下往上
@@ -401,7 +476,7 @@ function renderSummary(){
   const byRow={};cargo.forEach((r,i)=>byRow[i]={in:0,out:0});
   R.placed.forEach(b=>byRow[b.row].in++);R.missed.forEach(m=>byRow[m.row].out++);
   $('legend').innerHTML='<h2 style="font-size:.95rem">各品項裝載</h2>'+cargo.map((r,i)=>`<div><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span>${esc(r.name)}<span class="n">${byRow[i].in} / ${byRow[i].in+byRow[i].out}${byRow[i].out?` <span class="pill warn">未裝 ${byRow[i].out}</span>`:''}</span></div>`).join('')+
-    (R.fixed?`<p class="note"><b>這是照實際裝櫃照片排的位置，不是系統計算的。</b>可以在下面的表格微調；按「計算裝箱」會改成系統自動排。</p>`:`<p class="note">每件之間預留 ${R.gap} cm${R.gapZ?`、上下 ${R.gapZ} cm`:''}。比較 ${R.runs} 種擺放策略，採用「${R.strategy}」（裝載體積最大）。計算耗時 ${fmt(R.ms,0)} ms。</p>`)+
+    (R.fixed?`<p class="note"><b>這是照實際裝櫃照片排的位置，不是系統計算的。</b>可以在下面的表格微調；按「計算裝箱」會改成系統自動排。</p>`:`<p class="note">貨物之間前後留 ${R.gap} cm、左右留 ${R.gapY} cm${R.gapZ?`、上下 ${R.gapZ} cm`:''}。比較 ${R.runs} 種擺放策略，採用「${R.strategy}」（裝載體積最大）。計算耗時 ${fmt(R.ms,0)} ms。</p>`)+
     (R.manual.size?`<p class="note"><b>已手動調整 ${R.manual.size} 件。</b>按「計算裝箱」或改設定會重新自動排列，手動調整會清除。</p>`:'');
   renderIssues();
 }
@@ -424,10 +499,10 @@ function issuesOf(i){
     let area=0,bad=false;
     for(const q of R.placed){if(q===b)continue;const top=q.z+q.h;
       if(b.z<top-0.5||b.z>top+(R.gapZ||0)+0.5)continue;
-      const g=R.gap||0;   // 和自動排一樣，把間隙算進底面積
-      const ix=Math.min(b.x+b.l+g,q.x+q.l+g)-Math.max(b.x,q.x),iy=Math.min(b.y+b.w+g,q.y+q.w+g)-Math.max(b.y,q.y);
+      const g=R.gap||0,gy=R.gapY??g;   // 和自動排一樣，把間隙算進底面積
+      const ix=Math.min(b.x+b.l+g,q.x+q.l+g)-Math.max(b.x,q.x),iy=Math.min(b.y+b.w+gy,q.y+q.w+gy)-Math.max(b.y,q.y);
       if(ix>E&&iy>E){area+=ix*iy;if(!q.stack)bad=true}}
-    if(bad)out.push('壓在不可堆疊貨物上');else if(area<0.7*(b.l+(R.gap||0))*(b.w+(R.gap||0))-E)out.push('懸空');
+    if(bad)out.push('壓在不可堆疊貨物上');else if(area<0.7*(b.l+(R.gap||0))*(b.w+(R.gapY??(R.gap||0)))-E)out.push('懸空');
     if(cargo[b.row].floor)out.push('應放地板');
   }
   return out;
@@ -508,6 +583,15 @@ function buildScene(keepCam){
   for(const b of result.placed){
     const col=COLORS[b.row%COLORS.length];
     const name=cargo[b.row].name;
+    if(isLedger(name)){
+      const g=ledgerGroup(b,col,boxMeshes.length);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
+    }
+    if(isDiag(name)){
+      const g=diagGroup(b,col);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
+    }
+    if(isStd(name)){
+      const g=stdGroup(b,col,boxMeshes.length);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
+    }
     if(isTB(name)&&!isPallet(name)){
       const g=tbGroup(b,col,boxMeshes.length);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
     }
@@ -586,6 +670,146 @@ function tbEnd(widCm,hCm){
 }
 // 一捆 TB：每小捆 4 支寬 × 疊層（40 支 = 4 × 10 層，20 支 = 4 × 5 層），
 // 80 支 = 兩小捆左右靠在一起，外面再用兩道鋼帶綁成一大捆；底下墊兩根枕木，每層型鋼略有錯位
+// 主架／平主架捆：圓管 10 支寬 × 10 層 = 100 支；每 50 cm 一個圓盤；
+// 底下墊兩根枕木，兩側直立木板加黑色鋼帶綁緊（依主桿照片）
+const isStd=n=>/主架|主桿|立桿/.test(n)&&!/主架座/.test(n)&&!isPallet(n);
+function stdEnd(cols,rows){
+  return canvasTex(`stdEnd-${cols}-${rows}`,cols*40,rows*40,(g,w,h)=>{
+    g.fillStyle='#2f363c';g.fillRect(0,0,w,h);
+    const cw=w/cols,rh=h/rows;
+    for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){
+      const cx=(i+0.5)*cw,cy=(j+0.5)*rh,r=Math.min(cw,rh)*0.47;
+      g.fillStyle='#c9d0d5';g.beginPath();g.arc(cx,cy,r,0,7);g.fill();            // 圓盤
+      g.fillStyle='#8d979f';for(let k=0;k<4;k++){const a=k*Math.PI/2+Math.PI/4;g.beginPath();g.arc(cx+Math.cos(a)*r*0.68,cy+Math.sin(a)*r*0.68,r*0.17,0,7);g.fill();}
+      g.fillStyle='#dfe4e7';g.beginPath();g.arc(cx,cy,r*0.46,0,7);g.fill();      // 管壁
+      g.fillStyle='#2a3036';g.beginPath();g.arc(cx,cy,r*0.36,0,7);g.fill();      // 管口
+    }
+  });
+}
+function stdLong(lenCm,n,key){
+  const discs=Math.max(1,Math.round(lenCm/50));
+  return canvasTex(`stdLong-${key}-${n}-${discs}`,1024,n*24,(g,w,h)=>{
+    const lh=h/n;
+    for(let j=0;j<n;j++){
+      const y=j*lh,gr=g.createLinearGradient(0,y,0,y+lh);
+      gr.addColorStop(0,'#9aa4ab');gr.addColorStop(0.45,'#e1e6e9');gr.addColorStop(1,'#7f8a92');
+      g.fillStyle=gr;g.fillRect(0,y,w,lh);
+      g.fillStyle='#5d676f';g.fillRect(0,y+lh-1.5,w,1.5);
+    }
+    for(let k=0;k<discs;k++){            // 圓盤：沿長度每 50 cm 一圈
+      const x=(k+0.5)*w/discs;
+      g.fillStyle='#d3d9dd';g.fillRect(x-4,0,8,h);
+      g.fillStyle='#6f7a82';g.fillRect(x-4,0,1.5,h);g.fillRect(x+2.5,0,1.5,h);
+    }
+  });
+}
+function stdGroup(b,col,idx){
+  const g=new THREE.Group();
+  const alongX=b.l>=b.w,len=alongX?b.l:b.w,wid=alongX?b.w:b.l;
+  const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
+  const mat=t=>new THREE.MeshLambertMaterial({map:t,color:tint});
+  const sleeper=Math.min(5,b.h*0.06),bh=b.h-sleeper;
+  const end=mat(stdEnd(10,10)),side=mat(stdLong(len,10,'s')),top=mat(stdLong(len,10,'t'));
+  const body=new THREE.Mesh(new THREE.BoxGeometry(len-2,bh,wid-3),[end,end,top,top,side,side]);
+  body.position.y=sleeper+bh/2;g.add(body);
+  const woodM=new THREE.MeshLambertMaterial({color:'#c9965a'}),strapM=new THREE.MeshLambertMaterial({color:'#1c2126'});
+  [-0.28,0.28].forEach(p=>{
+    const x=len*p;
+    const sl=new THREE.Mesh(new THREE.BoxGeometry(9,sleeper,wid),woodM);sl.position.set(x,sleeper/2,0);g.add(sl);   // 枕木
+    [-1,1].forEach(sd=>{                                                                                           // 兩側直立木板
+      const bd=new THREE.Mesh(new THREE.BoxGeometry(9,bh,1.5),woodM);bd.position.set(x,sleeper+bh/2,sd*(wid/2-0.7));g.add(bd);
+    });
+    const st=new THREE.Mesh(new THREE.BoxGeometry(2.5,bh+0.6,wid+0.6),strapM);st.position.set(x,sleeper+bh/2,0);g.add(st); // 鋼帶
+  });
+  if(!alongX)g.rotation.y=Math.PI/2;
+  return g;
+}
+// 斜桿捆：深灰色長管，兩頭是亮色的斜桿頭並用包膜包住；中段兩處木板加黑色鋼帶，底下墊枕木（依斜桿照片）
+const isDiag=n=>/斜桿/.test(n)&&!/斜桿頭/.test(n)&&!isPallet(n);
+function diagLong(n,key){
+  return canvasTex(`diagLong-${key}-${n}`,512,n*20,(g,w,h)=>{
+    const lh=h/n;
+    for(let j=0;j<n;j++){
+      const y=j*lh,gr=g.createLinearGradient(0,y,0,y+lh);
+      gr.addColorStop(0,'#5f676e');gr.addColorStop(0.45,'#a3abb1');gr.addColorStop(1,'#4b5258');
+      g.fillStyle=gr;g.fillRect(0,y,w,lh);
+      if(j%2===0){g.fillStyle='#d8dde0';g.fillRect(w*0.12,y+lh*0.3,10,lh*0.4);g.fillStyle='#3f8a4a';g.fillRect(w*0.12+10,y+lh*0.3,4,lh*0.4);}  // 標籤
+    }
+  });
+}
+function diagHead(key){   // 兩頭：亮色斜桿頭 + 包膜
+  return canvasTex('diagHead-'+key,256,256,(g,w,h)=>{
+    g.fillStyle='#cfd6da';g.fillRect(0,0,w,h);
+    for(let i=0;i<70;i++){const x=(i*53)%w,y=(i*97)%h;g.fillStyle=i%3?'#eef1f3':'#9aa3aa';g.fillRect(x,y,14,8);}
+    g.strokeStyle='rgba(255,255,255,.6)';g.lineWidth=3;
+    for(let x=-h;x<w;x+=22){g.beginPath();g.moveTo(x,h);g.lineTo(x+h*0.5,0);g.stroke();}
+  });
+}
+function diagGroup(b,col){
+  const g=new THREE.Group();
+  const alongX=b.l>=b.w,len=alongX?b.l:b.w,wid=alongX?b.w:b.l;
+  const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
+  const mat=t=>new THREE.MeshLambertMaterial({map:t,color:tint});
+  const sleeper=Math.min(5,b.h*0.07),bh=b.h-sleeper,head=Math.min(28,len*0.13),mid=len-2*head;
+  const body=new THREE.Mesh(new THREE.BoxGeometry(mid,bh-4,wid-6),[mat(diagHead('e')),mat(diagHead('e')),mat(diagLong(10,'t')),mat(diagLong(10,'t')),mat(diagLong(10,'s')),mat(diagLong(10,'s'))]);
+  body.position.y=sleeper+(bh-4)/2;g.add(body);
+  const hm=mat(diagHead('h'));
+  [-1,1].forEach(sd=>{const hd=new THREE.Mesh(new THREE.BoxGeometry(head,bh,wid),hm);hd.position.set(sd*(mid/2+head/2),sleeper+bh/2,0);g.add(hd);});
+  const woodM=new THREE.MeshLambertMaterial({color:'#c9965a'}),strapM=new THREE.MeshLambertMaterial({color:'#1c2126'});
+  [-1,1].forEach(sd=>{
+    const x=sd*(mid/2-8);
+    const sl=new THREE.Mesh(new THREE.BoxGeometry(9,sleeper,wid+20),woodM);sl.position.set(x,sleeper/2,0);g.add(sl);   // 枕木（比捆寬）
+    [-1,1].forEach(s2=>{const bd=new THREE.Mesh(new THREE.BoxGeometry(7,bh-2,1.5),woodM);bd.position.set(x,sleeper+(bh-2)/2,s2*(wid/2-2.2));g.add(bd);});
+    const st=new THREE.Mesh(new THREE.BoxGeometry(2.5,bh-1.4,wid-3),strapM);st.position.set(x,sleeper+(bh-2)/2,0);g.add(st);
+  });
+  if(!alongX)g.rotation.y=Math.PI/2;
+  return g;
+}
+// 橫桿捆（依近照）：每支是鍍鋅管，兩端各一個鑄鋼橫桿頭，頭裡掛一片楔子；管子靠一端貼橘色標籤。
+// 上下相鄰兩層前後錯開，橫桿頭會互相卡在一起。短的捆兩側加木板，長的只用黑色鋼帶綁。
+// 每支用 InstancedMesh 畫，一捆只要幾個繪圖呼叫。
+const isLedger=n=>/橫桿/.test(n)&&!/橫桿頭|接頭/.test(n)&&!isPallet(n);
+function ledgerGroup(b,col,idx){
+  const g=new THREE.Group(),R=seeded(idx);
+  const alongX=b.l>=b.w,len=alongX?b.l:b.w,wid=alongX?b.w:b.l;
+  const sleeper=Math.min(5,b.h*0.07),bh=b.h-sleeper;
+  const cols=Math.max(1,Math.round(wid/6)),layers=Math.max(1,Math.round(bh/7));
+  const sx=wid/cols,sy=bh/layers,r=Math.min(2.45,sx*0.42,sy*0.42);
+  const headL=Math.min(9,len*0.08),headW=Math.min(6.4,sx*0.96),headH=Math.min(6,sy*0.92),stag=Math.min(6,len*0.04);
+  const pipeLen=Math.max(10,len-2*headL-stag);
+  const n=cols*layers;
+  const pipeGeo=new THREE.CylinderGeometry(r,r,pipeLen,10);pipeGeo.rotateZ(Math.PI/2);
+  const labGeo=new THREE.CylinderGeometry(r*1.06,r*1.06,Math.min(14,pipeLen*0.15),10);labGeo.rotateZ(Math.PI/2);
+  const headGeo=new THREE.BoxGeometry(headL,headH,headW);
+  const wedgeGeo=new THREE.BoxGeometry(1.3,headH*1.6,headW*0.5);
+  const pipes=new THREE.InstancedMesh(pipeGeo,new THREE.MeshLambertMaterial({color:'#b7bfc4'}),n);
+  const labs=new THREE.InstancedMesh(labGeo,new THREE.MeshLambertMaterial({color:'#e0612b'}),n);
+  const heads=new THREE.InstancedMesh(headGeo,new THREE.MeshLambertMaterial({color:'#8e979e'}),2*n);
+  const wedges=new THREE.InstancedMesh(wedgeGeo,new THREE.MeshLambertMaterial({color:'#737c83'}),2*n);
+  const m=new THREE.Matrix4();let k=0;
+  for(let j=0;j<layers;j++)for(let i=0;i<cols;i++){
+    const shift=(j%2?stag/2:-stag/2)+(R()-0.5)*1.2,y=sleeper+sy*(j+0.5),z=-wid/2+sx*(i+0.5);
+    m.makeTranslation(shift,y,z);pipes.setMatrixAt(k,m);
+    m.makeTranslation(shift+pipeLen/2-pipeLen*0.12,y,z);labs.setMatrixAt(k,m);
+    [-1,1].forEach((sd,q)=>{
+      const hx=shift+sd*(pipeLen/2+headL/2);
+      m.makeTranslation(hx,y,z);heads.setMatrixAt(2*k+q,m);
+      m.makeTranslation(hx+sd*headL*0.1,y-headH*0.25,z);wedges.setMatrixAt(2*k+q,m);
+    });
+    k++;
+  }
+  [pipes,labs,heads,wedges].forEach(o=>{o.instanceMatrix.needsUpdate=true;g.add(o)});
+  const woodM=new THREE.MeshLambertMaterial({color:'#d1a06a'}),strapM=new THREE.MeshLambertMaterial({color:'#1c2126'});
+  const short=len<=160,ps=short?[-0.25,0.25]:len>220?[-0.33,0,0.33]:[-0.3,0.3];
+  ps.forEach(p=>{
+    const x=pipeLen*p;
+    const st=new THREE.Mesh(new THREE.BoxGeometry(2.5,bh+0.8,wid+0.8),strapM);st.position.set(x,sleeper+bh/2,0);g.add(st);
+    if(short)[-1,1].forEach(s2=>{const bd=new THREE.Mesh(new THREE.BoxGeometry(8,bh,1.5),woodM);bd.position.set(x-5,sleeper+bh/2,s2*(wid/2+0.9));g.add(bd);});
+  });
+  [-0.3,0.3].forEach(p=>{const sl=new THREE.Mesh(new THREE.BoxGeometry(9,sleeper,wid),woodM);sl.position.set(pipeLen*p,sleeper/2,0);g.add(sl);});
+  if(!alongX)g.rotation.y=Math.PI/2;
+  return g;
+}
 function seeded(n){let x=(n+1)*2654435761%4294967296;return()=>{x=(x*1664525+1013904223)%4294967296;return x/4294967296}}
 function tbGroup(b,col,idx){
   const g=new THREE.Group(),R=seeded(idx);
