@@ -44,8 +44,7 @@ h2{font-family:var(--f-display);font-weight:600;font-size:1.15rem;letter-spacing
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;display:grid;gap:12px;min-width:0;align-content:start}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .spread{justify-content:space-between}
-.boxes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-@media (min-width:520px){.boxes{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.boxes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .cbtn{all:unset;cursor:pointer;border:1px solid var(--line);border-radius:4px;padding:8px 10px;display:grid;gap:2px;background:var(--sunk)}
 .cbtn b{font-family:var(--f-display);font-size:1.2rem;letter-spacing:.04em}
 .cbtn span{font-size:.75rem;color:var(--muted)}
@@ -157,7 +156,6 @@ const CONTAINERS = {
   '20GP':{name:'20 呎標準櫃',iso:'22G1',L:590,W:235,H:239,payload:28200},
   '40GP':{name:'40 呎標準櫃',iso:'42G1',L:1200,W:235,H:239,payload:26700},
   '40HQ':{name:'40 呎高櫃',iso:'45G1',L:1203.2,W:235.2,H:269.8,payload:26500},
-  '45HQ':{name:'45 呎高櫃',iso:'L5G1',L:1355.6,W:235.2,H:269.8,payload:27700},
 };
 const COLORS=['#3d7ebf','#e0a526','#3f9e6e','#c4574a','#8a63b8','#2fa3a8','#b8794a','#6b7f8f','#d16fa0','#7aa33a'];
 const SAMPLE=[
