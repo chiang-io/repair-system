@@ -17,7 +17,7 @@
 :root{
   --bg:#e9edf0; --surface:#ffffff; --sunk:#f3f5f7; --ink:#14212b; --muted:#5a6a76; --line:#cfd7dd;
   --accent:#f2a900; --accent-ink:#1a1400; --steel:#1f5f8b; --good:#1d7a4c; --warn:#a85b00; --bad:#b3261e;
-  --stage:#dfe5ea; --floor:#b89a6a;
+  --stage:#dfe5ea; --floor:#b89a6a; --hl:#fff1c2;
   --f-display:"Barlow Condensed","Arial Narrow",sans-serif;
   --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
   --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
@@ -25,11 +25,11 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0e161c; --surface:#16212a; --sunk:#111b22; --ink:#e2e9ee; --muted:#8fa0ad; --line:#2a3a46;
   --accent:#f5b81f; --accent-ink:#1a1400; --steel:#6fa8d6; --good:#4fc48a; --warn:#f0a040; --bad:#f2786f;
-  --stage:#121c23; --floor:#6e5a3c; color-scheme:dark }}
+  --stage:#121c23; --floor:#6e5a3c; --hl:#3d3418; color-scheme:dark }}
 :root[data-theme="dark"]{
   --bg:#0e161c; --surface:#16212a; --sunk:#111b22; --ink:#e2e9ee; --muted:#8fa0ad; --line:#2a3a46;
   --accent:#f5b81f; --accent-ink:#1a1400; --steel:#6fa8d6; --good:#4fc48a; --warn:#f0a040; --bad:#f2786f;
-  --stage:#121c23; --floor:#6e5a3c; color-scheme:dark }
+  --stage:#121c23; --floor:#6e5a3c; --hl:#3d3418; color-scheme:dark }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.55;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 32px}
@@ -75,6 +75,18 @@ button.del{color:var(--bad);font-weight:700;padding:4px 8px}
 [hidden]{display:none!important}
 .savebar input[type=text]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)}
 .row>input[type=checkbox]+label{flex:1;min-width:0}
+.missbanner{border:2px solid var(--bad);border-radius:6px;padding:10px 14px;display:grid;gap:6px;color:var(--ink);background:var(--surface)}
+.missbanner>b{color:var(--bad);font-size:1.05rem}
+.missbanner .why{font-size:.85rem;color:var(--muted)}
+.missbanner ul{margin:0;padding-left:1.1em;display:grid;gap:2px;font-size:.9rem}
+.bad{color:var(--bad)}
+td.loaded{white-space:nowrap}
+.adv{display:none}
+.showcm .adv{display:table-cell}
+td.mv{white-space:nowrap}
+td.mv button{padding:3px 6px;font-size:.76rem;margin-right:2px}
+#seqBody tr{cursor:pointer}
+#seqBody tr.sel td{background:var(--hl,#fff4d6)}
 .savebar{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:4px}
 .contedit summary{cursor:pointer;color:var(--steel);font-size:.85rem}
 .contedit{display:grid;gap:8px}
@@ -82,6 +94,11 @@ button.del{color:var(--bad);font-weight:700;padding:4px 8px}
 .cin{width:80px;font:inherit;font-family:var(--f-mono);padding:4px 6px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)}
 .addbar{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:4px;background:var(--sunk)}
 .addbar select#catSel{flex:1;min-width:0;max-width:100%}
+.selctl{position:absolute;left:10px;right:10px;bottom:10px;background:var(--surface);border:2px solid #f2b400;border-radius:6px;padding:8px 10px;display:grid;gap:6px;z-index:3}
+.selname{font-size:.85rem;line-height:1.4}
+.selbtns{display:flex;flex-wrap:wrap;gap:6px}
+.selbtns button{padding:6px 10px;font-weight:600}
+.stagehint{position:absolute;left:12px;bottom:8px;margin:0;font-size:.75rem;color:var(--muted);pointer-events:none}
 .viewbtn{position:absolute;top:10px;right:12px;font-size:.78rem;padding:4px 10px;background:var(--surface);opacity:.92}
 .tag{position:absolute;font-family:var(--f-mono);font-size:.7rem;letter-spacing:.1em;color:var(--muted);pointer-events:none}
 .tag.tl{top:10px;left:12px}.tag.br{bottom:10px;right:12px}
@@ -115,7 +132,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 <div class="wrap">
   <header>
     <div>
-      <h1><small id="isoCode">CSMU 000000 · 45G1</small>貨櫃裝箱模擬</h1>
+      <h1>貨櫃裝箱模擬</h1>
     </div>
     <p class="lede">選擇櫃型、填寫貨物清單，系統會依體積、方向限制、堆疊限制與載重上限計算擺放位置，並以 3D 顯示裝載順序。範例貨物均為虛構資料。</p>
   </header>
@@ -165,7 +182,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
       <div class="row spread"><h2>2 · 貨物清單</h2><span class="note">尺寸 cm · 重量 kg</span></div>
       <div class="tablewrap">
         <table>
-          <thead><tr><th></th><th></th><th>品名</th><th>長</th><th>寬</th><th>高</th><th title="一件（一捆、一板或一箱）的重量">每件重</th><th>件數</th><th title="只能左右轉 90 度，不能側放或立起來；桿件類一律平放">保持平放</th><th title="上方可再堆放貨物">可堆疊</th><th title="只能放在貨櫃地板，不放在其他貨物上">放地板</th><th title="同一疊最多疊幾層（例如橫桿 3 層）；空白 = 不限">最多疊</th><th title="這種貨物要放在貨櫃的哪一段，用來調整配重">位置</th></tr></thead>
+          <thead><tr><th></th><th></th><th>品名</th><th>長</th><th>寬</th><th>高</th><th title="一件（一捆、一板或一箱）的重量">每件重</th><th>件數</th><th title="這一種貨物裝進去幾件">已裝</th><th title="只能左右轉 90 度，不能側放或立起來；桿件類一律平放">保持平放</th><th title="上方可再堆放貨物">可堆疊</th><th title="只能放在貨櫃地板，不放在其他貨物上">放地板</th><th title="同一疊最多疊幾層（例如橫桿 3 層）；空白 = 不限">最多疊</th><th title="這種貨物要放在貨櫃的哪一段，用來調整配重">位置</th></tr></thead>
           <tbody id="cargoBody"></tbody>
         </table>
       </div>
@@ -218,9 +235,23 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 
     <section class="panel" aria-labelledby="h-v">
       <div class="row spread"><h2 id="h-v">3 · 裝載結果</h2><span class="row"><span id="issuePill" class="pill bad" hidden></span><span id="cogPill" class="pill good">重心正常</span></span></div>
+      <div class="missbanner" id="missBanner" hidden></div>
       <div class="kpis" id="kpis"></div>
       <div class="stage" id="stage">
         <button type="button" id="resetView" class="viewbtn">回到原本視角</button>
+        <div class="selctl" id="selCtl" hidden>
+          <div class="selname" id="selName"></div>
+          <div class="selbtns">
+            <button type="button" data-act="x,-10" title="往最裡面移 10 cm">◀ 往裡</button>
+            <button type="button" data-act="x,10" title="往門口移 10 cm">往門口 ▶</button>
+            <button type="button" data-act="y,-5" title="往左移 5 cm">往左</button>
+            <button type="button" data-act="y,5" title="往右移 5 cm">往右</button>
+            <button type="button" data-act="rot" title="轉 90 度">↻ 轉向</button>
+            <button type="button" data-act="undo" title="復原上一步">↶ 復原</button>
+            <button type="button" data-act="close" title="不選了">✕</button>
+          </div>
+        </div>
+        <p class="stagehint" id="stageHint">點一下 3D 裡的貨物，就可以在這裡直接移動它</p>
       </div>
       <div class="row">
         <button id="play" type="button" aria-label="播放裝載順序">▶ 播放</button>
@@ -228,11 +259,13 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
         <span class="mono" id="stepLbl" style="min-width:9ch;text-align:right">0 / 0</span>
       </div>
       <div class="legend" id="legend"></div>
-      <div class="row spread"><h2 style="font-size:.95rem">裝貨順序與手動調整</h2><span class="note">x 離最裡面、y 離左邊、z 離地板，單位 cm。改數字或按 ↻ 旋轉，重心會馬上重算。</span></div>
+      <div class="row"><button type="button" id="undoMove" disabled>↶ 復原上一步</button><button type="button" id="resetMoves" disabled>回到原本的排法</button><span class="note" id="moveMsg"></span></div>
+      <div class="row spread"><h2 style="font-size:.95rem">裝貨順序與手動調整</h2><span class="note">點一列（或點 3D 裡的貨物）會用黃框標出是哪一件；用按鈕往裡、往門口、往左、往右移，或 ↻ 轉向。重心會馬上重算。</span></div>
+      <div class="row"><input type="checkbox" id="showCm"><label for="showCm">顯示公分位置（進階：直接輸入離最裡面、離左邊、離地板幾公分）</label></div>
       <div>
         <div class="tablewrap" style="max-height:340px;overflow:auto">
-          <table>
-            <thead><tr><th>#</th><th>品名</th><th title="離最裡面多遠">x</th><th title="離左邊多遠">y</th><th title="離地板多高">z</th><th>擺放尺寸</th><th>狀態</th></tr></thead>
+          <table id="seqTable">
+            <thead><tr><th>#</th><th>品名</th><th>在哪裡</th><th>移動</th><th class="adv">離最裡面</th><th class="adv">離左邊</th><th class="adv">離地板</th><th>狀態</th></tr></thead>
             <tbody id="seqBody"></tbody>
           </table>
         </div>
@@ -469,8 +502,7 @@ const fmt=(n,d=0)=>n.toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFrac
 function renderContainers(){
   $('contBtns').innerHTML=Object.entries(CONTAINERS).map(([k,c])=>`<button type="button" class="cbtn" data-k="${k}" aria-pressed="${k===cont}"><b>${k}</b><span>${c.name}</span></button>`).join('');
   const C=CONTAINERS[cont];
-  $('contSpec').textContent=`內尺寸 ${fmt(C.L*10)} × ${fmt(C.W*10)} × ${fmt(C.H*10)} mm · 容積 ${fmt(C.L*C.W*C.H/1e6,1)} m³ · 最大載重 ${fmt(C.payload)} kg · ISO ${C.iso}`;
-  $('isoCode').textContent=`CSMU 482917 · ${C.iso}`;
+  $('contSpec').textContent=`裡面 長 ${fmt(C.L)} × 寬 ${fmt(C.W)} × 高 ${fmt(C.H)} cm・空間 ${fmt(C.L*C.W*C.H/1e6,1)} 立方米・最多裝 ${fmt(C.payload)} kg`;
   if($('cL'))fillContInputs();
 }
 // ---------- 櫃型尺寸可改（存在瀏覽器）----------
@@ -528,6 +560,7 @@ function renderCargo(){
     <td><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span></td>
     <td><input class="name" type="text" id="n${i}" data-f="name" value="${r.name.replace(/"/g,'&quot;')}" aria-label="品名"></td>
     ${['l','w','h','kg','qty'].map(f=>`<td><input type="number" id="${f}${i}" data-f="${f}" min="1" step="${f==='kg'?'0.1':'1'}" value="${r[f]}" aria-label="${f}"></td>`).join('')}
+    <td class="loaded" id="ld${i}"></td>
     <td class="c"><input type="checkbox" id="up${i}" data-f="up" ${r.up||isRod(r.name)?'checked':''} ${isRod(r.name)?'disabled title="桿件類一律平放"':''} aria-label="保持平放"></td>
     <td class="c"><input type="checkbox" id="st${i}" data-f="stack" ${r.stack?'checked':''} aria-label="可堆疊"></td>
     <td class="c"><input type="checkbox" id="fl${i}" data-f="floor" ${r.floor?'checked':''} aria-label="放地板"></td>
@@ -610,6 +643,9 @@ $('catAdd').onclick=()=>{
   if(rem)addCatalog(it,rem,false);
   $('catRem').value=0;
   renderCargo();run();
+  // 加入後馬上告訴使用者有沒有裝不下
+  const m=result.missed.length;
+  $('catInfo').innerHTML=m?`<b class="bad">加入了，但目前有 ${m} 件裝不下</b>（看右邊上方的紅色提示）。`:'加入了，全部都裝得下。';
 };
 $('clearRows').onclick=()=>{cargo=[];renderCargo();run();};
 $('addRow').onclick=()=>{cargo.push({name:'新貨物',l:50,w:40,h:40,kg:15,qty:10,up:true,stack:true});renderCargo()};
@@ -622,7 +658,7 @@ function applyLayout(lay){
   R.missed=[];R.total=R.placed.length;R.kg=R.placed.reduce((t,b)=>t+b.kg,0);
   if($('spread').checked)spreadSections(R.placed,CONTAINERS[cont].L);
   recalc();
-  R.fixed=true;R.manual=new Set();
+  R.fixed=true;R.manual=new Set();keepOriginal();
   renderSummary();renderSeq();buildScene();
   $('step').max=R.placed.length;$('step').value=R.placed.length;showStep(R.placed.length);
 }
@@ -659,7 +695,8 @@ function run(){
   if($('spread').checked)spreadSections(result.placed,C.L);
   // 依實際裝貨順序排列：由最裡面往門口，同一段由下往上
   result.placed.sort((a,b)=>a.x-b.x||a.z-b.z||a.y-b.y);
-  result.manual=new Set();
+  result.manual=new Set();SEL=-1;
+  keepOriginal();
   renderSummary();renderSeq();buildScene();
   $('step').max=result.placed.length;$('step').value=result.placed.length;showStep(result.placed.length);
 }
@@ -674,7 +711,7 @@ function renderSummary(){
   const kpiWarn=(k,v,warn,tag)=>`<div class="kpi${warn?' warnk':''}"><span class="k">${k}${tag?` <span class="pill warn">${tag}</span>`:''}</span><span class="v">${v}</span></div>`;
   $('kpis').innerHTML=
     kpi('已裝件數',`${fmt(R.placed.length)}<small> / ${fmt(R.total)}</small>`,R.total?R.placed.length/R.total*100:0)+
-    kpi('容積利用率',`${fmt(volPct,1)}<small> %</small>`,volPct)+
+    kpi('空間用了',`${fmt(volPct,1)}<small> %</small>`,volPct)+
     kpi('載重',`${fmt(R.kg)}<small> kg · ${fmt(kgPct,0)}%</small>`,kgPct)+
     kpiWarn('還能裝',`${fmt(Math.max(0,C.payload-R.kg))}<small> kg</small>`,kgPct>=90,kgPct>=volPct+20?'重量先滿':'')+
     kpi($('spread').checked?'門口剩餘（已平均分開）':'門口剩餘長度',`${fmt(Math.max(0,C.L-(R.placed.length?Math.max(...R.placed.map(b=>b.x+b.l)):0)))}<small> cm</small>`,null)+
@@ -684,22 +721,82 @@ function renderSummary(){
   p.textContent=R.placed.length===0?'尚無貨物':a<=10?'重心正常':a<=20?'重心偏向'+(off>0?'門口':'裡面'):'重心嚴重偏移';
   // legend
   const byRow={};cargo.forEach((r,i)=>byRow[i]={in:0,out:0});
+  // 裝不下的提示：哪些品項、各幾件、多重，原因是重量還是空間
+  {
+    const mi={};R.missed.forEach(m=>{mi[m.row]=(mi[m.row]||0)+1});
+    const tot=cargo.reduce((t,r)=>t+r.kg*r.qty,0),over=tot>C.payload+E;
+    const n=R.missed.length,mkg=R.missed.reduce((t,m)=>t+m.kg,0);
+    const bn=$('missBanner');bn.hidden=!n;
+    if(n)bn.innerHTML=`<b>裝不下：還有 ${fmt(n)} 件沒裝進去（共 ${fmt(mkg)} kg）</b>
+      <span class="why">${over?`原因：貨物總重 ${fmt(tot)} kg，超過這個櫃型的最大載重 ${fmt(C.payload)} kg。`:'原因：空間不夠（重量還沒超過）。'}可以換大一點的櫃型、減少數量，或分成兩櫃。</span>
+      <ul>${Object.entries(mi).map(([r,c])=>`<li><span class="sw" style="background:${COLORS[r%COLORS.length]}"></span>${esc(cargo[r].name)}：<b>${c}</b> 件沒裝（已裝 ${cargo[r].qty-c} / ${cargo[r].qty}）</li>`).join('')}</ul>`;
+  }
   R.placed.forEach(b=>byRow[b.row].in++);R.missed.forEach(m=>byRow[m.row].out++);
+  cargo.forEach((r,i)=>{const td=$('ld'+i);if(!td)return;const v=byRow[i];
+    td.innerHTML=v.out?`<span class="pill bad">${v.in} / ${v.in+v.out}</span>`:`<span class="pill good">${v.in} / ${v.in}</span>`;});
   $('legend').innerHTML='<h2 style="font-size:.95rem">各品項裝載</h2>'+cargo.map((r,i)=>`<div><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span>${esc(r.name)}<span class="n">${byRow[i].in} / ${byRow[i].in+byRow[i].out}${byRow[i].out?` <span class="pill warn">未裝 ${byRow[i].out}</span>`:''}</span></div>`).join('')+
-    (R.fixed?`<p class="note"><b>這是指定好的擺法（照片或示意），不是系統計算的。</b>可以在下面的表格微調；按「計算裝箱」會改成系統自動排。</p>`:`<p class="note">排與排之間留 ${R.gap} cm${R.gapZ?`、上下 ${R.gapZ} cm`:''}。${R.strategy==='同品項一排一排'?'排法：同品項一排一排，重的品項先排在最裡面。':`比較 ${R.runs} 種擺放策略，採用「${R.strategy}」（裝載體積最大）。`}${R.missed.length&&R.strategy==='同品項一排一排'?'<b>有貨沒裝進去，可以試試排法改成「系統自動找最滿」。</b>':''}計算耗時 ${fmt(R.ms,0)} ms。</p>`)+
+    (R.fixed?`<p class="note"><b>這是指定好的擺法（照片或示意），不是系統計算的。</b>可以在下面的表格微調；按「計算裝箱」會改成系統自動排。</p>`:`<p class="note">排與排之間留 ${R.gap} cm${R.gapZ?`、上下 ${R.gapZ} cm`:''}。${R.strategy==='同品項一排一排'?'排法：同品項一排一排，重的品項先排在最裡面。':`系統試了 ${R.runs} 種排法，用裝得最多的那一種。`}${R.missed.length&&R.strategy==='同品項一排一排'?'<b>有貨沒裝進去，可以試試排法改成「系統自動找最滿」。</b>':''}</p>`)+
     (R.manual.size?`<p class="note"><b>已手動調整 ${R.manual.size} 件。</b>按「計算裝箱」或改設定會重新自動排列，手動調整會清除。</p>`:'');
   renderIssues();
 }
 // ---------- 手動調整 ----------
+// 白話位置：第幾排（從最裡面數）・左/中/右・第幾層
+function posInfo(){
+  const R=result,C=CONTAINERS[cont],idx=R.placed.map((_,i)=>i).sort((a,b)=>R.placed[a].x-R.placed[b].x),sec=[];
+  let n=0,end=-1;
+  for(const i of idx){const b=R.placed[i];if(b.x>=end-0.5){n++;end=b.x+b.l}else end=Math.max(end,b.x+b.l);sec[i]=n;}
+  const fresh=R.placed.map(q=>({...q,tier:0}));
+  return R.placed.map((b,i)=>{
+    const c=b.y+b.w/2,side=b.w>C.W*0.6?'整排':c<C.W/3?'左邊':c>C.W*2/3?'右邊':'中間';
+    return {row:sec[i],side,layer:tierOf(fresh[i],fresh.filter((_,k)=>k!==i))};
+  });
+}
 function renderSeq(){
-  const R=result;
-  $('seqBody').innerHTML=R.placed.map((b,i)=>`<tr data-i="${i}"><td>${i+1}</td>
+  const R=result,P=posInfo();
+  $('seqBody').innerHTML=R.placed.map((b,i)=>`<tr data-i="${i}" class="${i===SEL?'sel':''}"><td>${i+1}</td>
     <td><span class="sw" style="background:${COLORS[b.row%COLORS.length]}"></span> ${esc(cargo[b.row].name)}</td>
-    ${['x','y','z'].map(k=>`<td><input type="number" class="pos" id="p${k}${i}" data-k="${k}" step="1" value="${+b[k].toFixed(1)}" aria-label="第 ${i+1} 件 ${k}"></td>`).join('')}
-    <td class="mono"><span class="dim">${fmt(b.l)}×${fmt(b.w)}×${fmt(b.h)}</span> <button type="button" class="ghost rot" data-rot="${i}" title="水平旋轉 90°" aria-label="旋轉第 ${i+1} 件">↻</button></td>
-    <td class="st"></td></tr>`).join('')||'<tr><td colspan="7" class="note">沒有可裝載的貨物</td></tr>';
+    <td><b>第 ${P[i].row} 排・${P[i].side}・第 ${P[i].layer} 層</b><br><span class="note">離最裡面 ${fmt(b.x)} cm${Math.abs(b.l-b.w)<1?'':b.l>b.w?'・順著長邊':'・橫放'}</span></td>
+    <td class="mv"><button type="button" data-mv="x,-10" title="往最裡面移 10 cm">往裡</button><button type="button" data-mv="x,10" title="往門口移 10 cm">往門口</button><button type="button" data-mv="y,-5" title="往左移 5 cm">往左</button><button type="button" data-mv="y,5" title="往右移 5 cm">往右</button><button type="button" data-rot="${i}" title="轉 90 度（橫放／順著長邊）">↻</button></td>
+    ${['x','y','z'].map(k=>`<td class="adv"><input type="number" class="pos" id="p${k}${i}" data-k="${k}" step="1" value="${+b[k].toFixed(1)}" aria-label="第 ${i+1} 件 ${{x:'離最裡面',y:'離左邊',z:'離地板'}[k]}"></td>`).join('')}
+    <td class="st"></td></tr>`).join('')||'<tr><td colspan="8" class="note">沒有可裝載的貨物</td></tr>';
+  $('seqTable').classList.toggle('showcm',$('showCm').checked);
   renderIssues();
 }
+// 移動後往下落到下面那件貨物上（或地板），不會懸在半空
+function settle(i){
+  const R=result,b=R.placed[i];let z=0;
+  for(const q of R.placed){if(q===b)continue;
+    const ix=Math.min(b.x+b.l,q.x+q.l)-Math.max(b.x,q.x),iy=Math.min(b.y+b.w,q.y+q.w)-Math.max(b.y,q.y);
+    if(ix>0.5&&iy>0.5&&q.z+q.h<=b.z+0.5)z=Math.max(z,q.z+q.h);}   // 只往下落，不會跳到旁邊那疊上面
+  b.z=z;
+}
+// 所有貨物由下往上依序往下落：下面的被移走，上面的就掉下來補位，不會懸在半空
+function dropAll(){
+  const R=result,order=R.placed.map((_,i)=>i).sort((a,b)=>R.placed[a].z-R.placed[b].z);
+  order.forEach(i=>settle(i));
+}
+let SEL=-1;
+// 復原：記下系統原本的排法，以及每次手動移動前的樣子
+const snap=()=>({placed:result.placed.map(b=>({...b})),manual:new Set(result.manual)});
+function keepOriginal(){result.orig=snap();result.hist=[];updUndo();}
+function pushHist(){result.hist.push(snap());if(result.hist.length>50)result.hist.shift();}
+function restore(st){result.placed=st.placed.map(b=>({...b}));result.manual=new Set(st.manual);
+  stopPlay();buildScene(true);recalc();renderSummary();renderSeq();if(SEL>=0)select(SEL);updUndo();}
+function updUndo(){if(!$('undoMove')||!result)return;const h=(result.hist||[]).length;
+  $('undoMove').disabled=!h;$('resetMoves').disabled=!h&&!result.manual.size;
+  $('moveMsg').textContent=h?`已手動移動 ${h} 次`:'';}
+$('undoMove').onclick=()=>{const st=result.hist.pop();if(st)restore(st);};
+$('resetMoves').onclick=()=>{if(!result.orig)return;result.hist=[];restore(result.orig);$('moveMsg').textContent='已回到原本的排法';};
+function select(i){
+  SEL=i;document.querySelectorAll('#seqBody tr').forEach(tr=>tr.classList.toggle('sel',+tr.dataset.i===i));
+  if(selMesh&&result.placed[i]){const C=CONTAINERS[cont],b=result.placed[i];
+    selMesh.scale.set(b.l+6,b.h+6,b.w+6);selMesh.position.set(-C.L/2+b.x+b.l/2,b.z+b.h/2,-C.W/2+b.y+b.w/2);selMesh.visible=true;}
+  else if(selMesh)selMesh.visible=false;
+  const b=result&&result.placed[i],ctl=$('selCtl');ctl.hidden=!b;$('stageHint').hidden=!!b;
+  if(b){const P=posInfo()[i];$('selName').innerHTML=`<span class="sw" style="background:${COLORS[b.row%COLORS.length]}"></span> 第 ${i+1} 件・${esc(cargo[b.row].name)}<br><b>第 ${P.row} 排・${P.side}・第 ${P.layer} 層</b>　<span class="note">離最裡面 ${fmt(b.x)} cm</span>`;
+    ctl.querySelector('[data-act="undo"]').disabled=!(result.hist||[]).length;}
+}
+$('showCm').addEventListener('change',()=>$('seqTable').classList.toggle('showcm',$('showCm').checked));
 // 檢查單件：超出貨櫃、和其他貨物重疊、懸空、壓在不可堆疊的貨物上、「放地板」卻不在地板
 function issuesOf(i){
   const C=CONTAINERS[cont],R=result,b=R.placed[i],out=[];
@@ -736,22 +833,34 @@ function meshPos(i){
 $('seqBody').addEventListener('change',e=>{
   const t=e.target;if(!t.classList.contains('pos'))return;
   const i=+t.closest('tr').dataset.i,v=parseFloat(t.value);if(!isFinite(v))return;
-  result.placed[i][t.dataset.k]=v;result.manual.add(i);
-  stopPlay();if(boxMeshes[i])meshPos(i);recalc();renderSummary();
+  pushHist();result.placed[i][t.dataset.k]=v;result.manual.add(i);
+  stopPlay();if(boxMeshes[i])meshPos(i);recalc();renderSummary();select(i);
 });
+// 移動一件貨物：k = x（往裡/往門口）或 y（往左/往右），或轉向
+function doMove(i,act){
+  const b=result.placed[i];if(!b)return;
+  pushHist();
+  if(act==='rot'){const cx=b.x+b.l/2,cy=b.y+b.w/2;[b.l,b.w]=[b.w,b.l];b.x=+(cx-b.l/2).toFixed(1);b.y=+(cy-b.w/2).toFixed(1);}   // 以中心旋轉
+  else{const [k,d]=act.split(',');b[k]=+(b[k]+ +d).toFixed(1);}
+  const C=CONTAINERS[cont];b.x=Math.min(Math.max(0,b.x),Math.max(0,C.L-b.l));b.y=Math.min(Math.max(0,b.y),Math.max(0,C.W-b.w));settle(i);   // 推到牆就停
+  dropAll();   // 下面被移走的話，上面的貨物會往下掉補位
+  result.manual.add(i);stopPlay();buildScene(true);recalc();renderSummary();renderSeq();select(i);updUndo();
+}
 $('seqBody').addEventListener('click',e=>{
-  const r=e.target.closest('[data-rot]');if(!r)return;
-  const i=+r.dataset.rot,b=result.placed[i];
-  const cx=b.x+b.l/2,cy=b.y+b.w/2;[b.l,b.w]=[b.w,b.l];b.x=+(cx-b.l/2).toFixed(1);b.y=+(cy-b.w/2).toFixed(1);   // 以中心旋轉
-  result.manual.add(i);stopPlay();
-  const tr=r.closest('tr');tr.querySelector('.dim').textContent=`${fmt(b.l)}×${fmt(b.w)}×${fmt(b.h)}`;
-  tr.querySelector('[data-k="x"]').value=b.x;tr.querySelector('[data-k="y"]').value=b.y;
-  buildScene(true);recalc();renderSummary();
+  const tr=e.target.closest('tr[data-i]');if(!tr)return;const i=+tr.dataset.i;
+  const mv=e.target.closest('[data-mv]'),rot=e.target.closest('[data-rot]');
+  if(mv)doMove(i,mv.dataset.mv);else if(rot)doMove(i,'rot');else select(i);
 });
-function recalc(){const R=result;R.vol=R.placed.reduce((t,b)=>t+b.l*b.w*b.h,0)}
+// 3D 畫面上的移動按鈕（不用往下捲也看得到怎麼動）
+$('selCtl').addEventListener('click',e=>{
+  const btn=e.target.closest('[data-act]');if(!btn)return;const act=btn.dataset.act;
+  if(act==='close'){select(-1);return}
+  if(act==='undo'){const st=result.hist.pop();if(st)restore(st);return}
+  if(SEL>=0)doMove(SEL,act);
+});function recalc(){const R=result;R.vol=R.placed.reduce((t,b)=>t+b.l*b.w*b.h,0)}
 
 // ---------- 3D ----------
-const stage=$('stage');let renderer,scene,camera,controls,group,boxMeshes=[],warnMeshes=[],ok3d=true;
+const stage=$('stage');let renderer,scene,camera,controls,group,boxMeshes=[],warnMeshes=[],selMesh=null,ok3d=true;
 function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
 function init3d(){
   if(!window.THREE){ok3d=false;stage.insertAdjacentHTML('beforeend','<p class="note" style="padding:40px 16px">3D 元件載入失敗，仍可查看右下方裝載順序表。</p>');return}
@@ -760,6 +869,17 @@ function init3d(){
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(40,1,1,20000);
   controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
+  // 點 3D 裡的貨物 → 選到表格裡那一列（拖曳旋轉時不算點）
+  let down=null;const ray=new THREE.Raycaster(),ptr=new THREE.Vector2();
+  renderer.domElement.addEventListener('pointerdown',e=>{down=[e.clientX,e.clientY]});
+  renderer.domElement.addEventListener('pointerup',e=>{
+    if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>5)return;
+    const r=renderer.domElement.getBoundingClientRect();ptr.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
+    ray.setFromCamera(ptr,camera);
+    const hit=ray.intersectObjects(boxMeshes.filter(m=>m.visible),true)[0];if(!hit)return;
+    let o=hit.object;while(o&&!boxMeshes.includes(o))o=o.parent;const i=boxMeshes.indexOf(o);if(i<0)return;
+    select(i);const tr=document.querySelector(`#seqBody tr[data-i="${i}"]`);if(tr)tr.scrollIntoView({block:'nearest',behavior:'smooth'});
+  });
   scene.add(new THREE.AmbientLight(0xffffff,.62));
   const d=new THREE.DirectionalLight(0xffffff,.55);d.position.set(-1,2,1.4);scene.add(d);
   const d2=new THREE.DirectionalLight(0xffffff,.2);d2.position.set(1,1,-1);scene.add(d2);
@@ -816,6 +936,9 @@ function buildScene(keepCam){
   // 位置有問題時顯示的紅框
   warnMeshes=result.placed.map(b=>{const w=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(b.l+3,b.h+3,b.w+3)),new THREE.LineBasicMaterial({color:'#e5332a'}));w.visible=false;group.add(w);return w});
   warnMeshes.forEach((_,i)=>meshPos(i));
+  // 選取中的貨物：黃色框
+  selMesh=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:'#f2b400',depthTest:false}));
+  selMesh.renderOrder=20;selMesh.visible=false;group.add(selMesh);if(SEL>=0)select(SEL);
   if(!keepCam)resetView();
   showStep(+$('step').value);
 }
