@@ -87,6 +87,13 @@ td.mv{white-space:nowrap}
 td.mv button{padding:3px 6px;font-size:.76rem;margin-right:2px}
 #seqBody tr{cursor:pointer}
 #seqBody tr.sel td{background:var(--hl,#fff4d6)}
+.planpanel{grid-column:1/-1}
+.plangrid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+@media (min-width:1000px){.plangrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+.planbox{border:1px solid var(--line);border-radius:4px;padding:10px 12px;display:grid;gap:6px;min-width:0}
+.planbox h3{margin:0;font-size:.9rem}
+.plansvg svg{width:100%;height:auto;display:block;font-family:var(--f-body)}
+.planlist{margin:0;padding-left:1.2em;display:grid;gap:4px;font-size:.92rem}
 .savebar{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:4px}
 .contedit summary{cursor:pointer;color:var(--steel);font-size:.85rem}
 .contedit{display:grid;gap:8px}
@@ -125,6 +132,21 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 @media (min-width:700px){.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .mono{font-family:var(--f-mono)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* 手機：貨物清單每一列變成一張卡片 */
+@media (max-width:640px){
+  #cargoTable thead{display:none}
+  #cargoTable,#cargoTable tbody{display:block}
+  #cargoTable tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 8px;padding:10px;border-bottom:1px solid var(--line);position:relative}
+  #cargoTable td{display:grid;gap:2px;border:0;padding:0;white-space:normal}
+  #cargoTable td[data-label]::before{content:attr(data-label);font-size:.7rem;color:var(--muted)}
+  #cargoTable td.c-name{grid-column:1/-1;padding-right:36px}
+  #cargoTable td.c-del{position:absolute;top:8px;right:6px}
+  #cargoTable td.c-sw{position:absolute;top:30px;left:-2px}
+  #cargoTable td input[type=number],#cargoTable td select,#cargoTable td input.name{min-width:0!important;width:100%}
+  #cargoTable td.c{justify-items:start}
+  .tablewrap:has(#cargoTable){overflow:visible}
+}
 </style>
 
 </head>
@@ -171,7 +193,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
       </div>
       <div class="row">
         <input type="checkbox" id="heavyRule" checked>
-        <label for="heavyRule">重的不壓在輕的上面</label>
+        <label for="heavyRule">重的不壓在輕的上面（桿件很耐壓，上面放棧板或其他貨都可以）</label>
 
       </div>
       <div class="row">
@@ -181,7 +203,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 
       <div class="row spread"><h2>2 · 貨物清單</h2><span class="note">尺寸 cm · 重量 kg</span></div>
       <div class="tablewrap">
-        <table>
+        <table id="cargoTable">
           <thead><tr><th></th><th></th><th>品名</th><th>長</th><th>寬</th><th>高</th><th title="一件（一捆、一板或一箱）的重量">每件重</th><th>件數</th><th title="這一種貨物裝進去幾件">已裝</th><th title="只能左右轉 90 度，不能側放或立起來；桿件類一律平放">保持平放</th><th title="上方可再堆放貨物">可堆疊</th><th title="只能放在貨櫃地板，不放在其他貨物上">放地板</th><th title="同一疊最多疊幾層（例如橫桿 3 層）；空白 = 不限">最多疊</th><th title="這種貨物要放在貨櫃的哪一段，用來調整配重">位置</th></tr></thead>
           <tbody id="cargoBody"></tbody>
         </table>
@@ -271,6 +293,18 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
         </div>
       </div>
     </section>
+
+    <section class="panel planpanel" aria-labelledby="h-p">
+      <div class="row spread"><h2 id="h-p">4 · 給現場的裝櫃圖</h2>
+        <span class="row"><button type="button" id="planCopy" class="primary">複製每排放什麼（傳 LINE 用）</button><span class="note" id="planMsg"></span></span></div>
+      <p class="note">截圖這一區就能傳給堆高機人員。數字是第幾件，跟上面「裝貨順序」的編號一樣。</p>
+      <div class="plangrid">
+        <div class="planbox"><h3>從上面往下看</h3><div id="planTop" class="plansvg"></div></div>
+        <div class="planbox"><h3>從側面看</h3><div id="planSide" class="plansvg"></div></div>
+      </div>
+      <div class="planbox"><h3>每一排放什麼（從最裡面開始裝）</h3><ol id="planRows" class="planlist"></ol></div>
+      <textarea id="planText" hidden rows="6" style="width:100%"></textarea>
+    </section>
   </div>
 </div>
 
@@ -344,7 +378,7 @@ function supported(box,placed){
     if(Math.abs(p.z+p.h-box.z)>E)continue;
     const ix=Math.min(box.x+box.l,p.x+p.l)-Math.max(box.x,p.x);
     const iy=Math.min(box.y+box.w,p.y+p.w)-Math.max(box.y,p.y);
-    if(ix>E&&iy>E){if(!p.stack)return false;if(HEAVY_RULE&&box.kg>p.kg*1.05+E)return false;area+=ix*iy;}   // 重的不壓在輕的上面
+    if(ix>E&&iy>E){if(!p.stack)return false;if(HEAVY_RULE&&!p.rod&&box.kg>p.kg*1.05+E)return false;area+=ix*iy;}   // 重的不壓在輕的上面（桿件很耐壓，上面放什麼都可以）
   }
   return area>=0.7*box.l*box.w-E;
 }
@@ -397,7 +431,7 @@ function packOnce(C,items,ord,init=[]){
     }
     if(!ok){missed.push(it);failKey=fk;continue}
     failKey=null;
-    ok.tier=tierOf(ok,placed);ok.type=it.type;ok.stack=it.stack;ok.kg=it.kg;placed.push(ok);kg+=it.kg;
+    ok.tier=tierOf(ok,placed);ok.type=it.type;ok.stack=it.stack;ok.kg=it.kg;ok.rod=it.rod;placed.push(ok);kg+=it.kg;
     const dedupe=a=>{const seen=new Set();return a.filter(pt=>{const k=pt.x.toFixed(3)+','+pt.y.toFixed(3)+','+pt.z.toFixed(3);if(seen.has(k))return false;seen.add(k);return true})};
     pts=dedupe(pts.concat([{x:ok.x+ok.l,y:ok.y,z:ok.z},{x:ok.x,y:ok.y+ok.w,z:ok.z},{x:ok.x,y:ok.y,z:ok.z+ok.h}])
       .filter(pt=>pt.x<C.L-E&&pt.y<C.W-E&&pt.z<C.H-E&&!placed.some(b=>inside(pt,b))));
@@ -445,7 +479,7 @@ function rowPack(C,items){
       for(let z=0;z<Lo.tiers&&k<n&&!full;z++)for(let a=0;a<Lo.across&&k<n;a++){
         const it=list[i+k];
         if(kg+it.kg>C.payload+E){full=true;break}
-        placed.push({x:rowX,y:Math.max(0,(C.W-Lo.across*Lo.w)/2)+a*Lo.w,z:z*Lo.h,l:Lo.l,w:Lo.w,h:Lo.h,type:it.type,stack:it.stack,kg:it.kg,tier:z+1});kg+=it.kg;k++;
+        placed.push({x:rowX,y:Math.max(0,(C.W-Lo.across*Lo.w)/2)+a*Lo.w,z:z*Lo.h,l:Lo.l,w:Lo.w,h:Lo.h,type:it.type,stack:it.stack,kg:it.kg,rod:it.rod,tier:z+1});kg+=it.kg;k++;
       }
       i+=k;if(dir>0)xF+=Lo.l;else xB-=Lo.l;
       if(full){missed.push(...list.slice(i));return}
@@ -461,7 +495,7 @@ function rowPack(C,items){
 }
 function pack(C,rows,gap=0,gapZ=0,gapY=gap,mode='auto'){
   const items=[];
-  rows.forEach((r,t)=>{const oris=forkliftOris(orientations(isRod(r.name)?{...r,up:true}:r),r,C).map(([l,w,h])=>[l+gap,w+gapY,h+gapZ]);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,floor:!!r.floor,pref:r.pref||'auto',tiers:r.tiers||0,vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
+  rows.forEach((r,t)=>{const oris=forkliftOris(orientations(isRod(r.name)?{...r,up:true}:r),r,C).map(([l,w,h])=>[l+gap,w+gapY,h+gapZ]);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,floor:!!r.floor,pref:r.pref||'auto',tiers:r.tiers||0,rod:isRod(r.name),vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
   // item order × free-point order; keep the run that loads the most volume
   // 「放地板」的貨物一律先裝
   // 有位置偏好的貨物接著先裝，才搶得到指定位置
@@ -551,21 +585,90 @@ $('planDel').onclick=()=>{
 };
 $('planList').addEventListener('change',()=>{$('planDel').dataset.confirm='';$('planDel').textContent='刪除'});
 planList();
+// ---------- 給現場的裝櫃圖：俯視圖、側視圖、每排放什麼 ----------
+function planRows(){
+  const R=result,P=posInfo(),rows={};
+  R.placed.forEach((b,i)=>{const k=P[i].row;const r=(rows[k]=rows[k]||{items:[],x0:Infinity,x1:0});r.items.push(i);if(P[i].layer===1||b.z<0.5){r.x0=Math.min(r.x0,b.x);r.x1=Math.max(r.x1,b.x+b.l);}});
+  Object.values(rows).forEach(r=>{if(r.x0===Infinity){r.items.forEach(i=>{const b=R.placed[i];r.x0=Math.min(r.x0,b.x);r.x1=Math.max(r.x1,b.x+b.l)})}});
+  return Object.keys(rows).map(Number).sort((a,b)=>a-b).map(k=>{
+    const r=rows[k],byName={};
+    r.items.forEach(i=>{const b=R.placed[i],n=cargo[b.row].name,lay=P[i].layer;
+      const g=byName[n]=byName[n]||{n,count:0,minL:99,maxL:0,nums:[],row:b.row,floorCount:0,cross:b.w>b.l};
+      g.count++;g.minL=Math.min(g.minL,lay);g.maxL=Math.max(g.maxL,lay);g.nums.push(i+1);if(lay===1)g.floorCount++;});
+    return {k,x0:r.x0,x1:r.x1,groups:Object.values(byName).sort((a,b)=>a.minL-b.minL)};
+  });
+}
+function rowText(g){
+  const unit=/棧板|木箱/.test(g.n)?'板':'捆';
+  const side=g.floorCount>1?`左右並排 ${g.floorCount} ${unit}`:`地板 1 ${unit}`;
+  const how=g.minL>1?`疊在上面・第 ${g.minL}${g.maxL>g.minL?'～'+g.maxL:''} 層`:g.maxL>1?`${side}、疊 ${g.maxL} 層`:side;
+  return `${g.n} ${g.count} ${unit}（${how}${g.cross?'・橫放':''}）`;
+}
+function renderPlan(){
+  const R=result,C=CONTAINERS[cont];if(!R)return;
+  const rows=planRows(),pad=40,fs=Math.max(12,C.L/70);
+  const css=k=>getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+  const ink=css('--ink'),muted=css('--muted'),line=css('--line');
+  // 俯視圖：同一個位置疊起來的算一疊，標第幾件和疊幾層
+  const stacks={};R.placed.forEach((b,i)=>{const k=[Math.round(b.x),Math.round(b.y),Math.round(b.l),Math.round(b.w)].join();(stacks[k]=stacks[k]||[]).push(i)});
+  const st=Object.values(stacks).map(list=>({list,b:R.placed[list[0]],z:Math.min(...list.map(i=>R.placed[i].z))})).sort((a,c)=>a.z-c.z);
+  const top=st.map(({list,b},k)=>{const nums=list.map(i=>i+1).sort((a,c)=>a-c);
+    const lab=nums.length>2?`${nums[0]}～${nums[nums.length-1]}`:nums.join('、');
+    // 上面還疊了別的貨（例如棧板）時，標籤放左邊，才不會被蓋住
+    const covered=st.slice(k+1).some(o=>o.b.x<b.x+b.l&&b.x<o.b.x+o.b.l&&o.b.y<b.y+b.w&&b.y<o.b.y+o.b.w);
+    const f=Math.min(fs,b.w*0.35,b.l*0.3),tx=covered?b.x+Math.min(b.l*0.14,fs*2.2):b.x+b.l/2;
+    return `<rect x="${b.x}" y="${b.y}" width="${b.l}" height="${b.w}" fill="${COLORS[b.row%COLORS.length]}" fill-opacity="${covered?.35:.55}" stroke="${ink}" stroke-width="1.5"/>
+      <text x="${tx}" y="${b.y+b.w/2}" font-size="${f}" text-anchor="middle" dominant-baseline="middle" fill="${ink}" font-weight="700">${lab}</text>
+      ${list.length>1?`<text x="${tx}" y="${b.y+b.w/2+f}" font-size="${Math.min(fs*0.8,b.w*0.25,b.l*0.25)}" text-anchor="middle" dominant-baseline="middle" fill="${ink}">疊${list.length}層</text>`:''}`}).join('');
+  const rowMarks=rows.map(r=>`<text x="${(r.x0+r.x1)/2}" y="${-fs*0.6}" font-size="${fs}" text-anchor="middle" fill="${muted}">第 ${r.k} 排</text>`).join('');
+  $('planTop').innerHTML=`<svg viewBox="${-pad} ${-pad-fs} ${C.L+2*pad} ${C.W+2*pad+fs}" role="img" aria-label="從上面往下看">
+    <rect x="0" y="0" width="${C.L}" height="${C.W}" fill="none" stroke="${muted}" stroke-width="3"/>
+    ${top}${rowMarks}
+    <text x="${-pad*0.4}" y="${C.W/2}" font-size="${fs}" text-anchor="middle" fill="${muted}" transform="rotate(-90 ${-pad*0.4} ${C.W/2})">最裡面</text>
+    <text x="${C.L+pad*0.5}" y="${C.W/2}" font-size="${fs}" text-anchor="middle" fill="${muted}" transform="rotate(90 ${C.L+pad*0.5} ${C.W/2})">門口</text>
+    <text x="${C.L/2}" y="${C.W+pad*0.75}" font-size="${fs*0.85}" text-anchor="middle" fill="${muted}">左邊在上、右邊在下；數字 = 第幾件（照裝貨順序）</text></svg>`;
+  // 側視圖：從左邊看進去，看得出每排疊幾層多高
+  const side=R.placed.map((b,i)=>({b,i})).sort((a,c)=>c.b.y-a.b.y).map(({b,i})=>`<rect x="${b.x}" y="${C.H-b.z-b.h}" width="${b.l}" height="${b.h}" fill="${COLORS[b.row%COLORS.length]}" fill-opacity=".45" stroke="${ink}" stroke-width="1.2"/>`).join('');
+  const heights=rows.map(r=>{const h=Math.max(...r.groups.flatMap(()=>0),...R.placed.filter((b,i)=>b.x>=r.x0-0.5&&b.x+b.l<=r.x1+0.5).map(b=>b.z+b.h));
+    return `<text x="${(r.x0+r.x1)/2}" y="${C.H-h-fs*0.4}" font-size="${fs*0.85}" text-anchor="middle" fill="${ink}">${fmt(h)} cm</text>`}).join('');
+  $('planSide').innerHTML=`<svg viewBox="${-pad} ${-pad} ${C.L+2*pad} ${C.H+2*pad}" role="img" aria-label="從側面看">
+    <rect x="0" y="0" width="${C.L}" height="${C.H}" fill="none" stroke="${muted}" stroke-width="3"/>${side}${heights}
+    <text x="${-pad*0.4}" y="${C.H/2}" font-size="${fs}" text-anchor="middle" fill="${muted}" transform="rotate(-90 ${-pad*0.4} ${C.H/2})">最裡面</text>
+    <text x="${C.L+pad*0.5}" y="${C.H/2}" font-size="${fs}" text-anchor="middle" fill="${muted}" transform="rotate(90 ${C.L+pad*0.5} ${C.H/2})">門口</text>
+    <text x="${C.L/2}" y="${C.H+pad*0.75}" font-size="${fs*0.85}" text-anchor="middle" fill="${muted}">上方數字 = 這一排疊多高（櫃子裡面高 ${fmt(C.H)} cm）</text></svg>`;
+  // 每排放什麼
+  $('planRows').innerHTML=rows.map(r=>`<li><b>第 ${r.k} 排</b>（離最裡面 ${fmt(r.x0)}～${fmt(r.x1)} cm）：${r.groups.map(rowText).join('；')}</li>`).join('')||'<li>還沒有貨物</li>';
+}
+function planText(){
+  const R=result,C=CONTAINERS[cont];
+  const lines=[`【${cont} ${C.name}】共 ${R.placed.length} 件、${fmt(R.kg)} kg`];
+  planRows().forEach(r=>lines.push(`第 ${r.k} 排（離最裡面 ${fmt(r.x0)}～${fmt(r.x1)} cm）：${r.groups.map(rowText).join('；')}`));
+  if(R.missed.length)lines.push(`※ 還有 ${R.missed.length} 件裝不下`);
+  return lines.join('\n');
+}
+$('planCopy').onclick=()=>{
+  const t=planText();
+  const ok=()=>{$('planMsg').textContent='已複製，可以貼到 LINE 或訊息裡。'};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(ok,()=>{$('planText').hidden=false;$('planText').value=t;$('planText').select();$('planMsg').textContent='這個瀏覽器不能自動複製，文字已經選好了，請按複製。'});
+  else{$('planText').hidden=false;$('planText').value=t;$('planText').select();}
+};
 $('contBtns').addEventListener('click',e=>{const b=e.target.closest('.cbtn');if(!b)return;cont=b.dataset.k;renderContainers();run()});
 
 const PREFS=[['auto','自動'],['back','最裡面'],['mid','中間'],['door','靠門口']];
 function renderCargo(){
+  // 每一格都帶 data-label：手機上表格會變成一張張卡片，標籤顯示在欄位前面
+  const L={l:'長 cm',w:'寬 cm',h:'高 cm',kg:'每件重 kg',qty:'件數'};
   $('cargoBody').innerHTML=cargo.map((r,i)=>`<tr data-i="${i}">
-    <td><button type="button" class="ghost del" data-del="${i}" aria-label="刪除 ${esc(r.name)}" title="刪除這一列">✕</button></td>
-    <td><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span></td>
-    <td><input class="name" type="text" id="n${i}" data-f="name" value="${r.name.replace(/"/g,'&quot;')}" aria-label="品名"></td>
-    ${['l','w','h','kg','qty'].map(f=>`<td><input type="number" id="${f}${i}" data-f="${f}" min="1" step="${f==='kg'?'0.1':'1'}" value="${r[f]}" aria-label="${f}"></td>`).join('')}
-    <td class="loaded" id="ld${i}"></td>
-    <td class="c"><input type="checkbox" id="up${i}" data-f="up" ${r.up||isRod(r.name)?'checked':''} ${isRod(r.name)?'disabled title="桿件類一律平放"':''} aria-label="保持平放"></td>
-    <td class="c"><input type="checkbox" id="st${i}" data-f="stack" ${r.stack?'checked':''} aria-label="可堆疊"></td>
-    <td class="c"><input type="checkbox" id="fl${i}" data-f="floor" ${r.floor?'checked':''} aria-label="放地板"></td>
-    <td><input type="number" class="tiers" id="ti${i}" data-f="tiers" min="1" step="1" value="${r.tiers||''}" placeholder="不限" aria-label="最多疊幾層"></td>
-    <td><select id="pf${i}" data-f="pref" aria-label="位置">${PREFS.map(([v,t])=>`<option value="${v}"${(r.pref||'auto')===v?' selected':''}>${t}</option>`).join('')}</select></td></tr>`).join('');
+    <td class="c-del"><button type="button" class="ghost del" data-del="${i}" aria-label="刪除 ${esc(r.name)}" title="刪除這一列">✕</button></td>
+    <td class="c-sw"><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span></td>
+    <td class="c-name" data-label="品名"><input class="name" type="text" id="n${i}" data-f="name" value="${r.name.replace(/"/g,'&quot;')}" aria-label="品名"></td>
+    ${['l','w','h','kg','qty'].map(f=>`<td data-label="${L[f]}"><input type="number" id="${f}${i}" data-f="${f}" min="1" step="${f==='kg'?'0.1':'1'}" value="${r[f]}" aria-label="${L[f]}"></td>`).join('')}
+    <td class="loaded" id="ld${i}" data-label="已裝"></td>
+    <td class="c" data-label="保持平放"><input type="checkbox" id="up${i}" data-f="up" ${r.up||isRod(r.name)?'checked':''} ${isRod(r.name)?'disabled title="桿件類一律平放"':''} aria-label="保持平放"></td>
+    <td class="c" data-label="可堆疊"><input type="checkbox" id="st${i}" data-f="stack" ${r.stack?'checked':''} aria-label="可堆疊"></td>
+    <td class="c" data-label="放地板"><input type="checkbox" id="fl${i}" data-f="floor" ${r.floor?'checked':''} aria-label="放地板"></td>
+    <td data-label="最多疊"><input type="number" class="tiers" id="ti${i}" data-f="tiers" min="1" step="1" value="${r.tiers||''}" placeholder="不限" aria-label="最多疊幾層"></td>
+    <td data-label="位置"><select id="pf${i}" data-f="pref" aria-label="位置">${PREFS.map(([v,t])=>`<option value="${v}"${(r.pref||'auto')===v?' selected':''}>${t}</option>`).join('')}</select></td></tr>`).join('');
 }
 $('cargoBody').addEventListener('input',e=>{
   const t=e.target,tr=t.closest('tr');if(!tr||!t.dataset.f)return;const r=cargo[+tr.dataset.i],f=t.dataset.f;
@@ -654,7 +757,7 @@ $('loadSample').onclick=()=>{const p=PRESETS[$('preset').value];cont=p.cont;carg
 function applyLayout(lay){
   result.layout=lay;
   const R=result;
-  R.placed=lay.map(([row,x,y,z,rot])=>{const r=cargo[row];return {x,y,z,l:rot?r.w:r.l,w:rot?r.l:r.w,h:r.h,kg:r.kg,stack:r.stack,type:row,row}});
+  R.placed=lay.map(([row,x,y,z,rot])=>{const r=cargo[row];return {x,y,z,l:rot?r.w:r.l,w:rot?r.l:r.w,h:r.h,kg:r.kg,stack:r.stack,rod:isRod(r.name),type:row,row}});
   R.missed=[];R.total=R.placed.length;R.kg=R.placed.reduce((t,b)=>t+b.kg,0);
   if($('spread').checked)spreadSections(R.placed,CONTAINERS[cont].L);
   recalc();
@@ -702,6 +805,7 @@ function run(){
 }
 
 function renderSummary(){
+  setTimeout(()=>{try{renderPlan()}catch(e){}},0);
   const C=CONTAINERS[cont],R=result;
   const volPct=R.vol/(C.L*C.W*C.H)*100,kgPct=R.kg/C.payload*100;
   let cog=0;if(R.kg>0){cog=R.placed.reduce((s,b)=>s+(b.x+b.l/2)*b.kg,0)/R.kg}
@@ -742,9 +846,15 @@ function renderSummary(){
 // ---------- 手動調整 ----------
 // 白話位置：第幾排（從最裡面數）・左/中/右・第幾層
 function posInfo(){
-  const R=result,C=CONTAINERS[cont],idx=R.placed.map((_,i)=>i).sort((a,b)=>R.placed[a].x-R.placed[b].x),sec=[];
-  let n=0,end=-1;
-  for(const i of idx){const b=R.placed[i];if(b.x>=end-0.5){n++;end=b.x+b.l}else end=Math.max(end,b.x+b.l);sec[i]=n;}
+  // 「排」以放在地板上的貨物來分：前後不重疊就是不同排；疊在上面的算進它中心所在的那一排
+  const R=result,C=CONTAINERS[cont],sec=[],bands=[];
+  R.placed.map((b,i)=>i).filter(i=>R.placed[i].z<0.5).sort((a,b)=>R.placed[a].x-R.placed[b].x).forEach(i=>{
+    const b=R.placed[i],last=bands[bands.length-1];
+    if(last&&b.x<last.x1-0.5){last.x1=Math.max(last.x1,b.x+b.l)}else bands.push({x0:b.x,x1:b.x+b.l});
+  });
+  R.placed.forEach((b,i)=>{const c=b.x+b.l/2;let k=bands.findIndex(s=>c>=s.x0-0.5&&c<=s.x1+0.5);
+    if(k<0){let d=Infinity;bands.forEach((s,j)=>{const dd=Math.min(Math.abs(c-s.x0),Math.abs(c-s.x1));if(dd<d){d=dd;k=j}})}
+    sec[i]=k+1;});
   const fresh=R.placed.map(q=>({...q,tier:0}));
   return R.placed.map((b,i)=>{
     const c=b.y+b.w/2,side=b.w>C.W*0.6?'整排':c<C.W/3?'左邊':c>C.W*2/3?'右邊':'中間';
@@ -808,7 +918,7 @@ function issuesOf(i){
       if(b.z<top-0.5||b.z>top+(R.gapZ||0)+0.5)continue;
       const g=R.gap||0,gy=R.gapY??g;   // 和自動排一樣，把間隙算進底面積
       const ix=Math.min(b.x+b.l+g,q.x+q.l+g)-Math.max(b.x,q.x),iy=Math.min(b.y+b.w+gy,q.y+q.w+gy)-Math.max(b.y,q.y);
-      if(ix>E&&iy>E){area+=ix*iy;if(!q.stack)bad=true;if(R.heavy&&b.kg>q.kg*1.05+E)light=true}}
+      if(ix>E&&iy>E){area+=ix*iy;if(!q.stack)bad=true;if(R.heavy&&!isRod(cargo[q.row].name)&&b.kg>q.kg*1.05+E)light=true}}
     if(bad)out.push('壓在不可堆疊貨物上');else if(light)out.push('壓在較輕的貨物上');else if(area<0.7*(b.l+(R.gap||0))*(b.w+(R.gapY??(R.gap||0)))-E)out.push('懸空');
     if(cargo[b.row].floor)out.push('應放地板');
     const mt=cargo[b.row].tiers;if(mt&&tierOf({...b,tier:0},R.placed.filter(q=>q!==b).map(q=>({...q,tier:0})),R.gapZ||0)>mt)out.push(`超過 ${mt} 層`);
