@@ -94,6 +94,21 @@ td.mv button{padding:3px 6px;font-size:.76rem;margin-right:2px}
 .planbox h3{margin:0;font-size:.9rem}
 .plansvg svg{width:100%;height:auto;display:block;font-family:var(--f-body)}
 .planlist{margin:0;padding-left:1.2em;display:grid;gap:4px;font-size:.92rem}
+.needbox{border:2px solid var(--steel);border-radius:6px;padding:10px 12px;display:grid;gap:8px}
+.needhead{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
+.needbox .short{margin:0;color:var(--bad)}
+.needbox .fit{margin:0;color:var(--good)}
+.needgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.needc{border:1px solid var(--line);border-radius:4px;padding:8px;display:grid;gap:4px;justify-items:start;background:var(--sunk)}
+.needc.cur{border-color:var(--steel);box-shadow:inset 0 0 0 1px var(--steel)}
+.needc.best{background:var(--surface)}
+.needc .big{font-family:var(--f-mono);font-size:1.4rem;font-weight:700}
+.needc button{padding:4px 10px;font-size:.8rem}
+.boxtabs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.boxtabs button{display:grid;gap:0;padding:6px 10px;text-align:left}
+.boxtabs button small{font-size:.7rem;color:var(--muted)}
+.boxtabs button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent)}
+.mixbar{border:1px dashed var(--accent);border-radius:4px;padding:8px 10px;display:grid;gap:6px;font-size:.88rem}
 .savebar{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:4px}
 .contedit summary{cursor:pointer;color:var(--steel);font-size:.85rem}
 .contedit{display:grid;gap:8px}
@@ -102,6 +117,16 @@ td.mv button{padding:3px 6px;font-size:.76rem;margin-right:2px}
 .addbar{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:4px;background:var(--sunk)}
 .addbar select#catSel{flex:1;min-width:0;max-width:100%}
 .selctl{position:absolute;left:10px;right:10px;bottom:10px;background:var(--surface);border:2px solid #f2b400;border-radius:6px;padding:8px 10px;display:grid;gap:6px;z-index:3}
+.pad{display:flex;gap:10px;align-items:center}
+.dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,40px);gap:3px;flex:none}
+.dpad button{padding:0;font-size:1rem;font-weight:700;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;border-radius:8px}
+.dpad button small{font-size:.62rem;font-weight:500;color:var(--muted)}
+.dpad .r{flex-direction:column-reverse}
+.dpad .u{grid-column:2;grid-row:1}.dpad .l{grid-column:1;grid-row:2}.dpad .c{grid-column:2;grid-row:2;border-radius:50%;background:var(--line);margin:8px}
+.dpad .r{grid-column:3;grid-row:2}.dpad .d{grid-column:2;grid-row:3}
+.padside{display:grid;grid-template-columns:repeat(2,minmax(0,auto));gap:4px}
+.padside button{padding:5px 8px;font-size:.78rem}
+.selctl{right:auto;max-width:calc(100% - 20px)}
 .selname{font-size:.85rem;line-height:1.4}
 .selbtns{display:flex;flex-wrap:wrap;gap:6px}
 .selbtns button{padding:6px 10px;font-weight:600}
@@ -219,9 +244,15 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
           <span id="remWrap" class="row" style="gap:6px">＋ 零頭
             <input type="number" id="catRem" min="0" step="1" value="0" aria-label="零頭支數" style="width:80px"> 支</span>
           <button id="catAdd" type="button" class="primary">加入清單</button>
+          <button id="mixAdd" type="button" title="把零頭支數放進同一捆，跟其他長度綁在一起">＋ 放進混綁</button>
           <button id="clearRows" type="button">清空清單</button>
         </div>
         <p class="note" id="catInfo"></p>
+        <div class="mixbar" id="mixBar" hidden>
+          <div id="mixList"></div>
+          <div class="row"><span>綁成</span><input type="number" id="mixQty" min="1" step="1" value="1" style="width:70px" aria-label="綁幾捆"><span>捆一樣的</span>
+            <button type="button" id="mixDone" class="primary">綁好，加入清單</button><button type="button" id="mixClear">清除</button></div>
+        </div>
       </div>
       <div class="row">
         <button id="addRow" type="button">＋ 自訂貨物</button>
@@ -252,25 +283,34 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
         <span style="flex:1"></span>
         <button id="run" class="primary" type="button">計算裝箱</button>
       </div>
-      <p class="note">一列代表一種包裝（一捆、一板或一箱），「件數」是捆數或板數。捆的長度放得進櫃寬時一律橫放（堆高機直接推進去），放不進的才順著貨櫃長邊放。「保持平放」：只能左右轉 90 度，不能側放或立起來；Top Beam、主架、平主架、橫桿、斜桿、蜂巢鋼等桿件類一律平放。「可堆疊」：取消後，該貨物上方不再放任何貨物。「最多疊」：同一疊最多疊幾層，空白代表不限。「放地板」：只放在地板上（不疊在別的貨上面），並優先裝入（例如重棧板）。「位置」：指定放在最裡面、中間或靠門口，用來調整配重；「自動」由系統決定。懸空貨物需有 70% 以上底面被支撐。</p>
+      <p class="note">一列代表一種包裝（一捆、一板或一箱），「件數」是捆數或板數。捆的長度放得進櫃寬時一律橫放（堆高機直接推進去），放不進的才順著貨櫃長邊放，而且自動放在靠門口（要用吊的）。「保持平放」：只能左右轉 90 度，不能側放或立起來；Top Beam、主架、平主架、橫桿、斜桿、蜂巢鋼等桿件類一律平放。「可堆疊」：取消後，該貨物上方不再放任何貨物。「最多疊」：同一疊最多疊幾層，空白代表不限。「放地板」：只放在地板上（不疊在別的貨上面），並優先裝入（例如重棧板）。「位置」：指定放在最裡面、中間或靠門口，用來調整配重；「自動」由系統決定。懸空貨物需有 70% 以上底面被支撐。</p>
     </section>
 
     <section class="panel" aria-labelledby="h-v">
       <div class="row spread"><h2 id="h-v">3 · 裝載結果</h2><span class="row"><span id="issuePill" class="pill bad" hidden></span><span id="cogPill" class="pill good">重心正常</span></span></div>
+      <div class="needbox" id="needBox"></div>
+      <div class="boxtabs" id="boxTabs" hidden></div>
       <div class="missbanner" id="missBanner" hidden></div>
       <div class="kpis" id="kpis"></div>
       <div class="stage" id="stage">
         <button type="button" id="resetView" class="viewbtn">回到原本視角</button>
         <div class="selctl" id="selCtl" hidden>
           <div class="selname" id="selName"></div>
-          <div class="selbtns">
-            <button type="button" data-act="x,-10" title="往最裡面移 10 cm">◀ 往裡</button>
-            <button type="button" data-act="x,10" title="往門口移 10 cm">往門口 ▶</button>
-            <button type="button" data-act="y,-5" title="往左移 5 cm">往左</button>
-            <button type="button" data-act="y,5" title="往右移 5 cm">往右</button>
-            <button type="button" data-act="rot" title="轉 90 度">↻ 轉向</button>
-            <button type="button" data-act="undo" title="復原上一步">↶ 復原</button>
-            <button type="button" data-act="close" title="不選了">✕</button>
+          <div class="pad">
+            <div class="dpad" aria-label="方向鍵">
+              <button type="button" class="u" data-act="y,-5" title="往左移 5 cm（鍵盤 ↑）">▲<small>左</small></button>
+              <button type="button" class="l" data-act="x,-10" title="往最裡面移 10 cm（鍵盤 ←）">◀<small>裡</small></button>
+              <span class="c"></span>
+              <button type="button" class="r" data-act="x,10" title="往門口移 10 cm（鍵盤 →）"><small>門口</small>▶</button>
+              <button type="button" class="d" data-act="y,5" title="往右移 5 cm（鍵盤 ↓）">▼<small>右</small></button>
+            </div>
+            <div class="padside">
+              <button type="button" data-act="up" title="同一疊往上一層">⤒ 上一層</button>
+              <button type="button" data-act="down" title="同一疊往下一層">⤓ 下一層</button>
+              <button type="button" data-act="rot" title="轉 90 度">↻ 轉向</button>
+              <button type="button" data-act="undo" title="復原上一步">↶ 復原</button>
+              <button type="button" data-act="close" title="不選了">✕ 關閉</button>
+            </div>
           </div>
         </div>
         <p class="stagehint" id="stageHint">點一下 3D 裡的貨物，就可以在這裡直接移動它</p>
@@ -331,9 +371,9 @@ const TOPBEAM=[['4.2',23.8,4],['3.0',16.42,6],['2.4',13.96,6],['1.8',9.85,4]].ma
   ({name:`Top Beam ${m}m（${TB_PCS}支/捆）`,l:Math.round(m*100),w:110,h:55,kg:+(kg*TB_PCS).toFixed(1),qty:q,up:true,stack:true}));
 // 歷年裝櫃明細：訂單 1150423007 第 1 櫃（5/6 40"HQ）。明細寫 TB 每捆 240x70x55，經確認為筆誤，80 支（兩小捆 4x10）實為 240x110x55。每件重 = 淨重 + 鋼帶、枕木、棧板分攤，合計約 23,198 kg
 const TB_1150423007=[
-  {name:'TB-B夾 棧板（5,000支/板）',l:110,w:110,h:70,kg:1330,qty:2,up:true,stack:false,floor:true,pref:'mid'},
-  {name:'TB-B夾 棧板（4,061支）',l:110,w:110,h:60,kg:1086,qty:1,up:true,stack:false,floor:true,pref:'mid'},
-  {name:'TB固定夾 棧板（5,939支）',l:110,w:110,h:100,kg:1515,qty:1,up:true,stack:false,floor:true,pref:'mid'},
+  {name:'TB-B夾 棧板（5,000支/板）',l:110,w:110,h:70,kg:1330,qty:2,up:true,stack:false,floor:true},
+  {name:'TB-B夾 棧板（4,061支）',l:110,w:110,h:60,kg:1086,qty:1,up:true,stack:false,floor:true},
+  {name:'TB固定夾 棧板（5,939支）',l:110,w:110,h:100,kg:1515,qty:1,up:true,stack:false,floor:true},
   {name:'Top Beam 2.4m（80支/捆）',l:240,w:110,h:55,kg:1055,qty:17,up:true,stack:true},
 ];
 // 依 5/7 裝櫃照片：TB 每排左右 2 捆、疊 2 層，從最裡面往門口排 4 排；第 2 排上面中間再放 1 捆；
@@ -493,9 +533,11 @@ function rowPack(C,items){
   }
   return {placed,missed,kg,vol:placed.reduce((s,b)=>s+b.l*b.w*b.h,0),strategy:'同品項一排一排'};
 }
+// 比櫃寬還長、只能順著長邊放的貨（要用吊的），位置選「自動」時一律放靠門口，不放最裡面
+function autoPref(r,C){if(r.pref&&r.pref!=='auto')return r.pref;return Math.max(r.l,r.w)>C.W+E?'door':'auto';}
 function pack(C,rows,gap=0,gapZ=0,gapY=gap,mode='auto'){
   const items=[];
-  rows.forEach((r,t)=>{const oris=forkliftOris(orientations(isRod(r.name)?{...r,up:true}:r),r,C).map(([l,w,h])=>[l+gap,w+gapY,h+gapZ]);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,floor:!!r.floor,pref:r.pref||'auto',tiers:r.tiers||0,rod:isRod(r.name),vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
+  rows.forEach((r,t)=>{const oris=forkliftOris(orientations(isRod(r.name)?{...r,up:true}:r),r,C).map(([l,w,h])=>[l+gap,w+gapY,h+gapZ]);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,floor:!!r.floor,pref:autoPref(r,C),tiers:r.tiers||0,rod:isRod(r.name),vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
   // item order × free-point order; keep the run that loads the most volume
   // 「放地板」的貨物一律先裝
   // 有位置偏好的貨物接著先裝，才搶得到指定位置
@@ -750,6 +792,34 @@ $('catAdd').onclick=()=>{
   const m=result.missed.length;
   $('catInfo').innerHTML=m?`<b class="bad">加入了，但目前有 ${m} 件裝不下</b>（看右邊上方的紅色提示）。`:'加入了，全部都裝得下。';
 };
+// ---------- 混綁：同一類不同長度綁成一捆（例如 TB 2.4m 40 支＋3.0m 40 支）----------
+let MIX=[];
+function renderMix(){
+  $('mixBar').hidden=!MIX.length;if(!MIX.length)return;
+  const it0=MIX[0].it,tot=MIX.reduce((t,m)=>t+m.n,0);
+  $('mixList').innerHTML=`<b>混綁中（${famName(it0)}）</b>：${MIX.map(m=>`${m.it.name} × ${m.n} 支`).join('、')}　<span class="${tot>it0.pcs?'bad':'note'}">共 ${tot} 支${tot>it0.pcs?`，超過一捆 ${it0.pcs} 支`:`，一捆最多 ${it0.pcs} 支`}</span>`;
+}
+$('mixAdd').onclick=()=>{
+  const it=CAT_ITEMS[+$('catSel').value],n=Math.max(0,Math.floor(+$('catRem').value||0));
+  if(it.pallet){$('catInfo').textContent='棧板不能混綁。';return}
+  if(!n){$('catInfo').textContent='先在「零頭」填這個長度要綁幾支，再按「放進混綁」。';return}
+  if(MIX.length&&MIX[0].it.fam!==it.fam){$('catInfo').textContent=`只能跟同一類一起綁（目前是 ${famName(MIX[0].it)}）。`;return}
+  const tot=MIX.reduce((t,m)=>t+m.n,0)+n;
+  if(tot>it.pcs){$('catInfo').innerHTML=`<b class="bad">一捆最多 ${it.pcs} 支</b>，現在會變成 ${tot} 支。`;return}
+  const same=MIX.find(m=>m.it===it);if(same)same.n+=n;else MIX.push({it,n});
+  $('catRem').value=0;$('catInfo').textContent='已放進混綁，可以再選別的長度繼續加。';renderMix();
+};
+$('mixClear').onclick=()=>{MIX=[];renderMix();};
+$('mixDone').onclick=()=>{
+  if(!MIX.length)return;
+  const it0=MIX.slice().sort((a,b)=>b.it.l-a.it.l)[0].it,tot=MIX.reduce((t,m)=>t+m.n,0);
+  const d=tot>=it0.pcs?{w:it0.w,h:it0.h}:partialDims(it0,tot),q=Math.max(1,Math.floor(+$('mixQty').value||1));
+  cargo.push({name:`${famName(it0)} 混綁（${MIX.map(m=>`${m.it.name.slice(famName(m.it).length).trim()}×${m.n}`).join('、')}，共${tot}支）`,
+    l:Math.max(...MIX.map(m=>m.it.l)),w:d.w,h:d.h,kg:+MIX.reduce((t,m)=>t+m.it.unit*m.n,0).toFixed(1),qty:q,
+    up:true,stack:true,floor:false,pref:'auto',tiers:it0.tiers||0});
+  MIX=[];$('mixQty').value=1;renderMix();renderCargo();run();
+  $('catInfo').textContent=result.missed.length?`混綁加入了，但目前有 ${result.missed.length} 件裝不下。`:'混綁加入了，全部都裝得下。';
+};
 $('clearRows').onclick=()=>{cargo=[];renderCargo();run();};
 $('addRow').onclick=()=>{cargo.push({name:'新貨物',l:50,w:40,h:40,kg:15,qty:10,up:true,stack:true});renderCargo()};
 $('loadSample').onclick=()=>{const p=PRESETS[$('preset').value];cont=p.cont;cargo=p.rows.map(o=>({...o}));renderContainers();renderCargo();run();if(p.actual)applyLayout(p.actual)};
@@ -761,7 +831,7 @@ function applyLayout(lay){
   R.missed=[];R.total=R.placed.length;R.kg=R.placed.reduce((t,b)=>t+b.kg,0);
   if($('spread').checked)spreadSections(R.placed,CONTAINERS[cont].L);
   recalc();
-  R.fixed=true;R.manual=new Set();keepOriginal();
+  R.fixed=true;R.manual=new Set();keepOriginal();MULTI={list:[R],left:0,leftRows:[]};VIEW=0;renderBoxTabs();
   renderSummary();renderSeq();buildScene();
   $('step').max=R.placed.length;$('step').value=R.placed.length;showStep(R.placed.length);
 }
@@ -784,25 +854,76 @@ function spreadSections(placed,L){
   for(const s of secs){const d=pos-s.start;s.items.forEach(b=>b.x=+(b.x+d).toFixed(1));pos+=(s.end-s.start)+gap}
 }
 
-function run(){
+// 一櫃裝不下時：照順序一櫃一櫃裝，第 1 櫃裝滿再裝第 2 櫃……直到全部裝完（最多 30 櫃）
+function multiPack(C,rows,gap,gapZ,gapY,mode){
+  const rem=rows.map(r=>({...r})),list=[];
+  for(let n=0;n<30;n++){
+    const live=rem.filter(r=>r.qty>0);if(!live.length)break;
+    const idx=live.map(r=>rem.indexOf(r)),res=pack(C,live,gap,gapZ,gapY,mode);
+    if(!res.placed.length)break;                       // 剩下的連一件都放不進空櫃（例如太長、太重）
+    res.placed.forEach(b=>{b.r0=idx[b.type];rem[b.r0].qty--});
+    list.push(res);
+  }
+  return {list,left:rem.filter(r=>r.qty>0).reduce((t,r)=>t+r.qty,0),leftRows:rem};
+}
+let VIEW=0,MULTI=null;
+function run(keepView){
   stopPlay();
   const C=CONTAINERS[cont];
   const rows=cargo.filter(r=>r.l>0&&r.w>0&&r.h>0&&r.qty>0);
-  // keep color index stable to the manifest row
-  const map=rows.map(r=>cargo.indexOf(r));
+  const map=rows.map(r=>cargo.indexOf(r));   // 顏色跟著貨物清單的列
   const t0=performance.now();
   const gap=Math.max(0,+$('gap').value||0),gapY=Math.max(0,+$('gapY').value||0),gapZ=Math.max(0,+$('gapZ').value||0);
   HEAVY_RULE=$('heavyRule').checked;
-  result=pack(C,rows,gap,gapZ,gapY,$('packMode').value);result.gap=gap;result.gapY=gapY;result.gapZ=gapZ;result.heavy=HEAVY_RULE;result.ms=performance.now()-t0;
-  result.placed.forEach(b=>b.row=map[b.type]);result.missed.forEach(m=>m.row=map[m.type]);
-  if($('spread').checked)spreadSections(result.placed,C.L);
-  // 依實際裝貨順序排列：由最裡面往門口，同一段由下往上
-  result.placed.sort((a,b)=>a.x-b.x||a.z-b.z||a.y-b.y);
-  result.manual=new Set();SEL=-1;
-  keepOriginal();
+  const mode=$('packMode').value,M=multiPack(C,rows,gap,gapZ,gapY,mode);
+  if(!M.list.length)M.list.push({placed:[],missed:[],kg:0,vol:0,runs:0,strategy:''});
+  // 每一櫃的資料整理好；裝不下的（連空櫃都放不進）算在最後
+  const leftItems=[];M.leftRows.forEach((r,k)=>{for(let q=0;q<r.qty;q++)leftItems.push({row:map[k],kg:r.kg,type:k})});
+  const total=rows.reduce((t,r)=>t+r.qty,0);
+  M.list.forEach((res,k)=>{
+    res.placed.forEach(b=>b.row=map[b.r0]);res.missed=leftItems;res.total=total;
+    res.gap=gap;res.gapY=gapY;res.gapZ=gapZ;res.heavy=HEAVY_RULE;res.ms=performance.now()-t0;res.boxNo=k+1;res.boxCount=M.list.length;
+    if($('spread').checked)spreadSections(res.placed,C.L);
+    res.placed.sort((a,b)=>a.x-b.x||a.z-b.z||a.y-b.y);   // 依實際裝貨順序：由最裡面往門口，同一段由下往上
+    res.manual=new Set();
+  });
+  MULTI=M;if(!keepView||VIEW>=M.list.length)VIEW=0;
+  showBox(VIEW);
+  renderNeed(rows,map,gap,gapZ,gapY,mode);
+}
+// 切換看第幾櫃
+function showBox(k){
+  VIEW=k;result=MULTI.list[k];SEL=-1;stopPlay();
+  if(!result.orig)keepOriginal();else updUndo();
   renderSummary();renderSeq();buildScene();
   $('step').max=result.placed.length;$('step').value=result.placed.length;showStep(result.placed.length);
+  renderBoxTabs();
 }
+function renderBoxTabs(){
+  const M=MULTI,el=$('boxTabs');
+  if(!M||M.list.length<2){el.hidden=true;return}
+  el.hidden=false;
+  el.innerHTML=`<span class="note">${cont} 要 ${M.list.length} 櫃，現在看：</span>`+M.list.map((r,k)=>`<button type="button" data-box="${k}" aria-pressed="${k===VIEW}">第 ${k+1} 櫃<small>${r.placed.length} 件・${fmt(r.placed.reduce((t,b)=>t+b.kg,0))} kg</small></button>`).join('');
+}
+$('boxTabs').addEventListener('click',e=>{const b=e.target.closest('[data-box]');if(b)showBox(+b.dataset.box)});
+// 「這張單要幾櫃？」：三種櫃型各要幾櫃，建議櫃數最少的；一樣多時選小一點的櫃
+function renderNeed(rows,map,gap,gapZ,gapY,mode){
+  const total=rows.reduce((t,r)=>t+r.qty,0),kg=rows.reduce((t,r)=>t+r.qty*r.kg,0);
+  if(!total){$('needBox').innerHTML='<p class="note">先在左邊加入貨物，這裡會算出要幾櫃。</p>';return}
+  const quick=mode==='auto'&&total>150?'rows':mode;   // 件數很多時用比較快的排法估算
+  const res=Object.keys(CONTAINERS).map(k=>{const M=k===cont?MULTI:multiPack(CONTAINERS[k],rows,gap,gapZ,gapY,quick);return {k,n:M.list.length,left:M.left}});
+  const ok=res.filter(r=>!r.left),best=ok.length?ok.reduce((a,b)=>b.n<a.n?b:a):null;
+  const cur=MULTI,rest=cur.list.slice(1),restN=rest.reduce((t,r)=>t+r.placed.length,0),restKg=rest.reduce((t,r)=>t+r.placed.reduce((u,b)=>u+b.kg,0),0);
+  const short=cur.list.length>1?`<p class="short"><b>${cont} 一櫃裝不下：還差 ${fmt(restN+cur.left)} 件、約 ${fmt(restKg)} kg</b>，要用到第 ${cur.list.length} 櫃。下面可以切換看每一櫃怎麼排。</p>`
+    :cur.left?'':`<p class="fit"><b>${cont} 一櫃就裝得下。</b></p>`;
+  $('needBox').innerHTML=`<div class="needhead"><b>這張單要幾櫃？</b><span class="note">共 ${fmt(total)} 件、${fmt(kg)} kg</span></div>${short}
+    <div class="needgrid">${res.map(r=>`<div class="needc${r.k===cont?' cur':''}${best&&r.k===best.k?' best':''}">
+      <b>${r.k}</b><span class="big">${r.left?'裝不下':`${r.n} 櫃`}</span>
+      <span class="note">${r.left?`有 ${r.left} 件連空櫃都放不進`:r.n===1?'一櫃就夠':`${CONTAINERS[r.k].name} × ${r.n}`}</span>
+      ${best&&r.k===best.k?'<span class="pill good">建議</span>':''}
+      ${r.k!==cont?`<button type="button" data-use="${r.k}">改用這個</button>`:'<span class="note">目前顯示</span>'}</div>`).join('')}</div>`;
+}
+$('needBox').addEventListener('click',e=>{const b=e.target.closest('[data-use]');if(!b)return;cont=b.dataset.use;renderContainers();run();});
 
 function renderSummary(){
   setTimeout(()=>{try{renderPlan()}catch(e){}},0);
@@ -836,9 +957,12 @@ function renderSummary(){
       <ul>${Object.entries(mi).map(([r,c])=>`<li><span class="sw" style="background:${COLORS[r%COLORS.length]}"></span>${esc(cargo[r].name)}：<b>${c}</b> 件沒裝（已裝 ${cargo[r].qty-c} / ${cargo[r].qty}）</li>`).join('')}</ul>`;
   }
   R.placed.forEach(b=>byRow[b.row].in++);R.missed.forEach(m=>byRow[m.row].out++);
-  cargo.forEach((r,i)=>{const td=$('ld'+i);if(!td)return;const v=byRow[i];
-    td.innerHTML=v.out?`<span class="pill bad">${v.in} / ${v.in+v.out}</span>`:`<span class="pill good">${v.in} / ${v.in}</span>`;});
-  $('legend').innerHTML='<h2 style="font-size:.95rem">各品項裝載</h2>'+cargo.map((r,i)=>`<div><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span>${esc(r.name)}<span class="n">${byRow[i].in} / ${byRow[i].in+byRow[i].out}${byRow[i].out?` <span class="pill warn">未裝 ${byRow[i].out}</span>`:''}</span></div>`).join('')+
+  // 分櫃時：「已裝」= 全部櫃子合計；各品項裝載 = 這一櫃裝了幾件
+  const multi=MULTI&&MULTI.list.length>1&&MULTI.list.includes(R),allIn={};cargo.forEach((r,i)=>allIn[i]=0);
+  (multi?MULTI.list:[R]).forEach(x=>x.placed.forEach(b=>allIn[b.row]++));
+  cargo.forEach((r,i)=>{const td=$('ld'+i);if(!td)return;const a=allIn[i],q=a+byRow[i].out;
+    td.innerHTML=byRow[i].out?`<span class="pill bad">${a} / ${q}</span>`:`<span class="pill good">${a} / ${q}</span>`;});
+  $('legend').innerHTML='<h2 style="font-size:.95rem">各品項裝載</h2>'+cargo.map((r,i)=>`<div><span class="sw" style="background:${COLORS[i%COLORS.length]}"></span>${esc(r.name)}<span class="n">${multi?`這一櫃 ${byRow[i].in}・全部 ${allIn[i]} / ${allIn[i]+byRow[i].out}`:`${byRow[i].in} / ${byRow[i].in+byRow[i].out}`}${byRow[i].out?` <span class="pill warn">未裝 ${byRow[i].out}</span>`:''}</span></div>`).join('')+
     (R.fixed?`<p class="note"><b>這是指定好的擺法（照片或示意），不是系統計算的。</b>可以在下面的表格微調；按「計算裝箱」會改成系統自動排。</p>`:`<p class="note">排與排之間留 ${R.gap} cm${R.gapZ?`、上下 ${R.gapZ} cm`:''}。${R.strategy==='同品項一排一排'?'排法：同品項一排一排，重的品項先排在最裡面。':`系統試了 ${R.runs} 種排法，用裝得最多的那一種。`}${R.missed.length&&R.strategy==='同品項一排一排'?'<b>有貨沒裝進去，可以試試排法改成「系統自動找最滿」。</b>':''}</p>`)+
     (R.manual.size?`<p class="note"><b>已手動調整 ${R.manual.size} 件。</b>按「計算裝箱」或改設定會重新自動排列，手動調整會清除。</p>`:'');
   renderIssues();
@@ -866,7 +990,7 @@ function renderSeq(){
   $('seqBody').innerHTML=R.placed.map((b,i)=>`<tr data-i="${i}" class="${i===SEL?'sel':''}"><td>${i+1}</td>
     <td><span class="sw" style="background:${COLORS[b.row%COLORS.length]}"></span> ${esc(cargo[b.row].name)}</td>
     <td><b>第 ${P[i].row} 排・${P[i].side}・第 ${P[i].layer} 層</b><br><span class="note">離最裡面 ${fmt(b.x)} cm${Math.abs(b.l-b.w)<1?'':b.l>b.w?'・順著長邊':'・橫放'}</span></td>
-    <td class="mv"><button type="button" data-mv="x,-10" title="往最裡面移 10 cm">往裡</button><button type="button" data-mv="x,10" title="往門口移 10 cm">往門口</button><button type="button" data-mv="y,-5" title="往左移 5 cm">往左</button><button type="button" data-mv="y,5" title="往右移 5 cm">往右</button><button type="button" data-rot="${i}" title="轉 90 度（橫放／順著長邊）">↻</button></td>
+    <td class="mv"><button type="button" data-mv="x,-10" title="往最裡面移 10 cm">往裡</button><button type="button" data-mv="x,10" title="往門口移 10 cm">往門口</button><button type="button" data-mv="y,-5" title="往左移 5 cm">往左</button><button type="button" data-mv="y,5" title="往右移 5 cm">往右</button><button type="button" data-mv="up" title="在同一疊裡往上一層">往上</button><button type="button" data-mv="down" title="在同一疊裡往下一層">往下</button><button type="button" data-rot="${i}" title="轉 90 度（橫放／順著長邊）">↻</button></td>
     ${['x','y','z'].map(k=>`<td class="adv"><input type="number" class="pos" id="p${k}${i}" data-k="${k}" step="1" value="${+b[k].toFixed(1)}" aria-label="第 ${i+1} 件 ${{x:'離最裡面',y:'離左邊',z:'離地板'}[k]}"></td>`).join('')}
     <td class="st"></td></tr>`).join('')||'<tr><td colspan="8" class="note">沒有可裝載的貨物</td></tr>';
   $('seqTable').classList.toggle('showcm',$('showCm').checked);
@@ -951,6 +1075,13 @@ function doMove(i,act){
   const b=result.placed[i];if(!b)return;
   pushHist();
   if(act==='rot'){const cx=b.x+b.l/2,cy=b.y+b.w/2;[b.l,b.w]=[b.w,b.l];b.x=+(cx-b.l/2).toFixed(1);b.y=+(cy-b.w/2).toFixed(1);}   // 以中心旋轉
+  else if(act==='up'||act==='down'){
+    // 往上／往下：在同一疊裡跟上面或下面那件換位置
+    const col=result.placed.filter(q=>Math.min(b.x+b.l,q.x+q.l)-Math.max(b.x,q.x)>0.5&&Math.min(b.y+b.w,q.y+q.w)-Math.max(b.y,q.y)>0.5).sort((p,q)=>p.z-q.z);
+    const k=col.indexOf(b),t=act==='up'?k+1:k-1;
+    if(t<0||t>=col.length){result.hist.pop();$('moveMsg').textContent=act==='up'?'已經在最上面了':'已經在最下面了';return}
+    [col[k],col[t]]=[col[t],col[k]];col.forEach((q,n)=>q.z=100000+n*1000);
+  }
   else{const [k,d]=act.split(',');b[k]=+(b[k]+ +d).toFixed(1);}
   const C=CONTAINERS[cont];b.x=Math.min(Math.max(0,b.x),Math.max(0,C.L-b.l));b.y=Math.min(Math.max(0,b.y),Math.max(0,C.W-b.w));settle(i);   // 推到牆就停
   dropAll();   // 下面被移走的話，上面的貨物會往下掉補位
@@ -962,6 +1093,12 @@ $('seqBody').addEventListener('click',e=>{
   if(mv)doMove(i,mv.dataset.mv);else if(rot)doMove(i,'rot');else select(i);
 });
 // 3D 畫面上的移動按鈕（不用往下捲也看得到怎麼動）
+// 鍵盤方向鍵：選了貨物時可以用 ←→（往裡/往門口）↑↓（往左/往右）
+document.addEventListener('keydown',e=>{
+  if(SEL<0||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
+  const m={ArrowLeft:'x,-10',ArrowRight:'x,10',ArrowUp:'y,-5',ArrowDown:'y,5'}[e.key];
+  if(m){e.preventDefault();doMove(SEL,m);}
+});
 $('selCtl').addEventListener('click',e=>{
   const btn=e.target.closest('[data-act]');if(!btn)return;const act=btn.dataset.act;
   if(act==='close'){select(-1);return}
@@ -988,7 +1125,10 @@ function init3d(){
     ray.setFromCamera(ptr,camera);
     const hit=ray.intersectObjects(boxMeshes.filter(m=>m.visible),true)[0];if(!hit)return;
     let o=hit.object;while(o&&!boxMeshes.includes(o))o=o.parent;const i=boxMeshes.indexOf(o);if(i<0)return;
-    select(i);const tr=document.querySelector(`#seqBody tr[data-i="${i}"]`);if(tr)tr.scrollIntoView({block:'nearest',behavior:'smooth'});
+    select(i);
+    // 只在表格自己的框裡捲到那一列，整個頁面不跳走
+    const tr=document.querySelector(`#seqBody tr[data-i="${i}"]`),box=tr&&tr.closest('.tablewrap');
+    if(tr&&box)box.scrollTop=tr.offsetTop-box.clientHeight/2+tr.offsetHeight/2;
   });
   scene.add(new THREE.AmbientLight(0xffffff,.62));
   const d=new THREE.DirectionalLight(0xffffff,.55);d.position.set(-1,2,1.4);scene.add(d);
