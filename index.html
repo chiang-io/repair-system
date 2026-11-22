@@ -730,6 +730,8 @@ const CATALOG=[
     .map(([m,u])=>({name:`橫桿 ${m}m`,pcs:100,unit:u,l:Math.round(m*100),w:60,h:70,perLayer:10,tiers:3}))},
   {group:'斜桿 φ48.6（100 支/捆，× 60 × 70 cm）',items:[['0.6x1.5',5.62,180],['0.9x1.5',5.98,205],['1.5x1.5',6.8,225],['1.8x1.5',7.32,250],['2.4x1.5',8.66,300]]
     .map(([m,u,l])=>({name:`斜桿 ${m}m`,pcs:100,unit:u,l,w:60,h:70,perLayer:10}))},
+  {group:'蜂巢鋼 200×161mm（30 支/捆，長 × 110 × 100 cm）',items:[['0.6',13.36],['0.9',18.18],['1.2',22.98],['1.5',27.63],['1.8',32.78],['2.4',42.7]]
+    .map(([m,u])=>({name:`蜂巢鋼 ${m}m`,pcs:30,unit:u,l:Math.round(m*100),w:110,h:100,perLayer:5}))},
   {group:'棧板（重量請自己改）',items:[{name:'棧板',pcs:1,unit:1000,l:110,w:110,h:100,pallet:true}]},
 ];
 CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿可以綁在一起
