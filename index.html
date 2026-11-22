@@ -732,7 +732,7 @@ const CATALOG=[
     .map(([m,u,l])=>({name:`斜桿 ${m}m`,pcs:100,unit:u,l,w:60,h:70,perLayer:10}))},
   {group:'棧板（重量請自己改）',items:[{name:'棧板',pcs:1,unit:1000,l:110,w:110,h:100,pallet:true}]},
 ];
-CATALOG.forEach((g,gi)=>g.items.forEach(it=>it.fam=gi));
+CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿可以綁在一起
 const CAT_ITEMS=CATALOG.flatMap(g=>g.items);
 $('catSel').innerHTML=CATALOG.map(g=>`<optgroup label="${g.group}">${g.items.map(it=>`<option value="${CAT_ITEMS.indexOf(it)}">${it.name}</option>`).join('')}</optgroup>`).join('');
 function catInfo(){
@@ -794,16 +794,17 @@ $('catAdd').onclick=()=>{
 };
 // ---------- 混綁：同一類不同長度綁成一捆（例如 TB 2.4m 40 支＋3.0m 40 支）----------
 let MIX=[];
+const mixLabel=()=>[...new Set(MIX.map(m=>famName(m.it)))].join('＋');
 function renderMix(){
   $('mixBar').hidden=!MIX.length;if(!MIX.length)return;
   const it0=MIX[0].it,tot=MIX.reduce((t,m)=>t+m.n,0);
-  $('mixList').innerHTML=`<b>混綁中（${famName(it0)}）</b>：${MIX.map(m=>`${m.it.name} × ${m.n} 支`).join('、')}　<span class="${tot>it0.pcs?'bad':'note'}">共 ${tot} 支${tot>it0.pcs?`，超過一捆 ${it0.pcs} 支`:`，一捆最多 ${it0.pcs} 支`}</span>`;
+  $('mixList').innerHTML=`<b>混綁中（${mixLabel()}）</b>：${MIX.map(m=>`${m.it.name} × ${m.n} 支`).join('、')}　<span class="${tot>it0.pcs?'bad':'note'}">共 ${tot} 支${tot>it0.pcs?`，超過一捆 ${it0.pcs} 支`:`，一捆最多 ${it0.pcs} 支`}</span>`;
 }
 $('mixAdd').onclick=()=>{
   const it=CAT_ITEMS[+$('catSel').value],n=Math.max(0,Math.floor(+$('catRem').value||0));
   if(it.pallet){$('catInfo').textContent='棧板不能混綁。';return}
   if(!n){$('catInfo').textContent='先在「零頭」填這個長度要綁幾支，再按「放進混綁」。';return}
-  if(MIX.length&&MIX[0].it.fam!==it.fam){$('catInfo').textContent=`只能跟同一類一起綁（目前是 ${famName(MIX[0].it)}）。`;return}
+  if(MIX.length&&MIX[0].it.mixg!==it.mixg){$('catInfo').textContent=`這個不能跟目前的綁在一起（可以混綁的：主架＋平主架、橫桿＋斜桿、同一種 Top Beam）。`;return}
   const tot=MIX.reduce((t,m)=>t+m.n,0)+n;
   if(tot>it.pcs){$('catInfo').innerHTML=`<b class="bad">一捆最多 ${it.pcs} 支</b>，現在會變成 ${tot} 支。`;return}
   const same=MIX.find(m=>m.it===it);if(same)same.n+=n;else MIX.push({it,n});
@@ -814,7 +815,7 @@ $('mixDone').onclick=()=>{
   if(!MIX.length)return;
   const it0=MIX.slice().sort((a,b)=>b.it.l-a.it.l)[0].it,tot=MIX.reduce((t,m)=>t+m.n,0);
   const d=tot>=it0.pcs?{w:it0.w,h:it0.h}:partialDims(it0,tot),q=Math.max(1,Math.floor(+$('mixQty').value||1));
-  cargo.push({name:`${famName(it0)} 混綁（${MIX.map(m=>`${m.it.name.slice(famName(m.it).length).trim()}×${m.n}`).join('、')}，共${tot}支）`,
+  cargo.push({name:`${mixLabel()} 混綁（${MIX.map(m=>MIX.every(x=>x.it.fam===m.it.fam)?m.it.name.slice(famName(m.it).length).trim()+'×'+m.n:m.it.name+'×'+m.n).join('、')}，共${tot}支）`,
     l:Math.max(...MIX.map(m=>m.it.l)),w:d.w,h:d.h,kg:+MIX.reduce((t,m)=>t+m.it.unit*m.n,0).toFixed(1),qty:q,
     up:true,stack:true,floor:false,pref:'auto',tiers:it0.tiers||0});
   MIX=[];$('mixQty').value=1;renderMix();renderCargo();run();
