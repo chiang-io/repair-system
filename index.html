@@ -358,9 +358,10 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 <script>
 // ---------- data ----------
 const CONTAINERS = {
-  '20GP':{name:'20 呎標準櫃',iso:'22G1',L:590,W:235,H:239,payload:28200},
-  '40GP':{name:'40 呎標準櫃',iso:'42G1',L:1200,W:235,H:239,payload:26700},
-  '40HQ':{name:'40 呎高櫃',iso:'45G1',L:1200,W:235,H:269,payload:26500},
+  // 依公司貨櫃規格表（使用者提供）：內徑長寬高、最大載重；40GP 最大載重照表上手寫修正 24 噸
+  '20GP':{name:'20 呎標準櫃',iso:'22G1',L:590,W:235,H:239,payload:20000},
+  '40GP':{name:'40 呎標準櫃',iso:'42G1',L:1203,W:235,H:238,payload:24000},
+  '40HQ':{name:'40 呎高櫃',iso:'45G1',L:1203,W:235,H:269,payload:25000},
 };
 const COLORS=['#3d7ebf','#e0a526','#3f9e6e','#c4574a','#8a63b8','#2fa3a8','#b8794a','#6b7f8f','#d16fa0','#7aa33a'];
 const SAMPLE=[
@@ -1194,7 +1195,6 @@ function buildScene(keepCam){
     const name=cargo[b.row].name;
     if(isHoney(name)){
       const hm=new THREE.Mesh(new THREE.BoxGeometry(b.l,b.h,b.w),honeyMaterials(b,col));hm.position.set(ox+b.x+b.l/2,b.z+b.h/2,oz+b.y+b.w/2);
-      if(b.w>b.l){hm.material[2].map&&(hm.material[2].map=hm.material[2].map.clone(),hm.material[2].map.center.set(.5,.5),hm.material[2].map.rotation=Math.PI/2,hm.material[2].map.needsUpdate=true);}
       group.add(hm);boxMeshes.push(hm);continue;
     }
     if(isLedger(name)){
@@ -1520,19 +1520,21 @@ function honeyMaterials(b,col){
   const alongX=b.l>=b.w,len=alongX?b.l:b.w,cols=5,rows=6;
   const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
   const holes=Math.max(2,Math.round(len/15));   // 大圓孔每 15 cm 一個（0.3m = 2 個、0.6m = 4 個）
-  const top=canvasTex(`hTop-${holes}`,1024,cols*60,(g,w,h)=>{const sh=h/cols,p=w/holes;
-    for(let r=0;r<cols;r++){const y=r*sh;g.fillStyle=r%2?'#bcc5cb':'#cdd4d9';g.fillRect(0,y,w,sh);g.fillStyle='#7f8a92';g.fillRect(0,y,w,2);
-      for(let k=0;k<holes;k++){g.fillStyle='#3a4248';g.beginPath();g.arc((k+0.5)*p,y+sh/2,Math.min(p,sh)*0.32,0,7);g.fill();}}
-    g.fillStyle='#1c2126';[0.25,0.75].forEach(q=>g.fillRect(w*q-4,0,8,h));});
-  const side=canvasTex(`hSide-${holes}`,1024,rows*50,(g,w,h)=>{const sh=h/rows,p=w/holes;
-    for(let r=0;r<rows;r++){const y=r*sh;g.fillStyle=r%2?'#c2cad0':'#d2d8dc';g.fillRect(0,y,w,sh);g.fillStyle='#7f8a92';g.fillRect(0,y+sh-2,w,2);
-      for(let k=0;k<holes;k++){g.fillStyle='#4a535a';g.beginPath();g.arc((k+0.5)*p,y+sh/2,4,0,7);g.fill();}}
-    g.fillStyle='#1c2126';[0.25,0.75].forEach(q=>g.fillRect(w*q-4,0,8,h));});
+  // 貼圖的長寬照實際公分等比例畫（每公分 k 像素），圓孔才會是正圓，不會被拉成橢圓
+  const wid=alongX?b.w:b.l,k=Math.min(4,2048/len);
+  const draw=(key,W,H,rot,fn)=>canvasTex(key,Math.round((rot?H:W)*k),Math.round((rot?W:H)*k),(g)=>{if(rot){g.translate(H*k,0);g.rotate(Math.PI/2);}g.scale(k,k);fn(g,W,H);});
+  const top=draw(`hTop-${len}-${wid}-${alongX}`,len,wid,!alongX,(g,w,h)=>{const sh=h/cols,p=w/holes;
+    for(let r=0;r<cols;r++){const y=r*sh;g.fillStyle=r%2?'#bcc5cb':'#cdd4d9';g.fillRect(0,y,w,sh);g.fillStyle='#7f8a92';g.fillRect(0,y,w,0.5);
+      for(let q=0;q<holes;q++){g.fillStyle='#3a4248';g.beginPath();g.arc((q+0.5)*p,y+sh/2,Math.min(p,sh)*0.3,0,7);g.fill();}}
+    g.fillStyle='#1c2126';[0.25,0.75].forEach(q=>g.fillRect(w*q-1,0,2,h));});
+  const side=draw(`hSide-${len}-${b.h}`,len,b.h,false,(g,w,h)=>{const sh=h/rows,p=w/holes;
+    for(let r=0;r<rows;r++){const y=r*sh;g.fillStyle=r%2?'#c2cad0':'#d2d8dc';g.fillRect(0,y,w,sh);g.fillStyle='#7f8a92';g.fillRect(0,y+sh-0.5,w,0.5);
+      for(let q=0;q<holes;q++){g.fillStyle='#4a535a';g.beginPath();g.arc((q+0.5)*p,y+sh/2,1,0,7);g.fill();}}
+    g.fillStyle='#1c2126';[0.25,0.75].forEach(q=>g.fillRect(w*q-1,0,2,h));});
   const end=canvasTex('hEnd',cols*48,rows*40,(g,w,h)=>{g.fillStyle='#5a646b';g.fillRect(0,0,w,h);const cw=w/cols,rh=h/rows;
     for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){g.fillStyle='#cfd6da';g.fillRect(i*cw+1,j*rh+1,cw-2,rh-2);g.fillStyle='#2f363c';g.fillRect(i*cw+5,j*rh+5,cw-10,rh-10);}});
   const m=t=>new THREE.MeshLambertMaterial({map:t,color:tint});
   const e=m(end),t=m(top),sd=m(side);
-  if(!alongX){top.rotation=0;}
   return alongX?[e,e,t,t,sd,sd]:[sd,sd,t,t,e,e];
 }
 function seeded(n){let x=(n+1)*2654435761%4294967296;return()=>{x=(x*1664525+1013904223)%4294967296;return x/4294967296}}
