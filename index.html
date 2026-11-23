@@ -130,6 +130,13 @@ td.mv button{padding:3px 6px;font-size:.76rem;margin-right:2px}
 .selname{font-size:.85rem;line-height:1.4}
 .selbtns{display:flex;flex-wrap:wrap;gap:6px}
 .selbtns button{padding:6px 10px;font-weight:600}
+.selctl{top:8px;bottom:auto;left:8px;padding:5px 7px;gap:4px;opacity:.95;border-width:1.5px}
+.selctl .dpad{grid-template-columns:repeat(3,30px);grid-template-rows:repeat(3,28px);gap:2px}
+.selctl .dpad button{font-size:.8rem}.selctl .dpad button small{font-size:.55rem}.selctl .dpad .c{margin:6px}
+.selctl .padside button{padding:3px 6px;font-size:.72rem}
+.selctl .selname{font-size:.78rem;line-height:1.35;padding-right:22px}
+.selmin{position:absolute;top:3px;right:4px;padding:0 6px;font-size:.8rem;line-height:1.4}
+.selctl.mini .pad{display:none}
 .stagehint{position:absolute;left:12px;bottom:8px;margin:0;font-size:.75rem;color:var(--muted);pointer-events:none}
 .viewbtn{position:absolute;top:10px;right:12px;font-size:.78rem;padding:4px 10px;background:var(--surface);opacity:.92}
 .tag{position:absolute;font-family:var(--f-mono);font-size:.7rem;letter-spacing:.1em;color:var(--muted);pointer-events:none}
@@ -300,6 +307,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
       <div class="stage" id="stage">
         <button type="button" id="resetView" class="viewbtn">回到原本視角</button>
         <div class="selctl" id="selCtl" hidden>
+          <button type="button" class="selmin" id="selMin" title="縮小／放大這個框（縮小時還是可以用鍵盤移動）">－</button>
           <div class="selname" id="selName"></div>
           <div class="pad">
             <div class="dpad" aria-label="方向鍵">
@@ -318,7 +326,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
             </div>
           </div>
         </div>
-        <p class="stagehint" id="stageHint">點一下 3D 裡的貨物，就可以在這裡直接移動它</p>
+        <p class="stagehint" id="stageHint">點一下 3D 裡的貨物（或按 Tab）就能移動它・鍵盤：方向鍵 移動、W／S 上下層、R 轉向、Z 復原、Esc 不選</p>
       </div>
       <div class="row">
         <button id="play" type="button" aria-label="播放裝載順序">▶ 播放</button>
@@ -1057,7 +1065,7 @@ function select(i){
     selMesh.scale.set(b.l+6,b.h+6,b.w+6);selMesh.position.set(-C.L/2+b.x+b.l/2,b.z+b.h/2,-C.W/2+b.y+b.w/2);selMesh.visible=true;}
   else if(selMesh)selMesh.visible=false;
   const b=result&&result.placed[i],ctl=$('selCtl');ctl.hidden=!b;$('stageHint').hidden=!!b;
-  if(b){const P=posInfo()[i];$('selName').innerHTML=`<span class="sw" style="background:${COLORS[b.row%COLORS.length]}"></span> 第 ${i+1} 件・${esc(cargo[b.row].name)}<br><b>第 ${P.row} 排・${P.side}・第 ${P.layer} 層</b>　<span class="note">離最裡面 ${fmt(b.x)} cm</span>`;
+  if(b){const P=posInfo()[i];$('selName').innerHTML=`<span class="sw" style="background:${COLORS[b.row%COLORS.length]}"></span> 第 ${i+1} 件・${esc(cargo[b.row].name)}<br><b>第 ${P.row} 排・${P.side}・第 ${P.layer} 層</b>`;
     ctl.querySelector('[data-act="undo"]').disabled=!(result.hist||[]).length;}
 }
 $('showCm').addEventListener('change',()=>$('seqTable').classList.toggle('showcm',$('showCm').checked));
@@ -1101,6 +1109,15 @@ $('seqBody').addEventListener('change',e=>{
   stopPlay();if(boxMeshes[i])meshPos(i);recalc();renderSummary();select(i);
 });
 // 移動一件貨物：k = x（往裡/往門口）或 y（往左/往右），或轉向
+// 往旁邊推時碰到別的貨：往上爬到它上面，直到沒有重疊（超過櫃高就留在原處，會標紅）
+function climb(b){
+  for(let n=0;n<50;n++){
+    let top=-1;
+    for(const q of result.placed){if(q===b)continue;
+      if(Math.min(b.x+b.l,q.x+q.l)-Math.max(b.x,q.x)>0.5&&Math.min(b.y+b.w,q.y+q.w)-Math.max(b.y,q.y)>0.5&&q.z<b.z+b.h-0.5&&q.z+q.h>b.z+0.5)top=Math.max(top,q.z+q.h);}
+    if(top<0)return;b.z=top;
+  }
+}
 function doMove(i,act){
   const b=result.placed[i];if(!b)return;
   pushHist();
@@ -1109,11 +1126,13 @@ function doMove(i,act){
     // 往上／往下：在同一疊裡跟上面或下面那件換位置
     const col=result.placed.filter(q=>Math.min(b.x+b.l,q.x+q.l)-Math.max(b.x,q.x)>0.5&&Math.min(b.y+b.w,q.y+q.w)-Math.max(b.y,q.y)>0.5).sort((p,q)=>p.z-q.z);
     const k=col.indexOf(b),t=act==='up'?k+1:k-1;
-    if(t<0||t>=col.length){result.hist.pop();$('moveMsg').textContent=act==='up'?'已經在最上面了':'已經在最下面了';return}
+    if(t<0||t>=col.length){result.hist.pop();$('moveMsg').textContent=act==='up'?'已經在最上面了。要疊到別捆上面：用方向鍵推過去，碰到別捆就會疊上去。':'已經在最下面了';return}
     [col[k],col[t]]=[col[t],col[k]];col.forEach((q,n)=>q.z=100000+n*1000);
   }
   else{const [k,d]=act.split(',');b[k]=+(b[k]+ +d).toFixed(1);}
-  const C=CONTAINERS[cont];b.x=Math.min(Math.max(0,b.x),Math.max(0,C.L-b.l));b.y=Math.min(Math.max(0,b.y),Math.max(0,C.W-b.w));settle(i);   // 推到牆就停
+  const C=CONTAINERS[cont];b.x=Math.min(Math.max(0,b.x),Math.max(0,C.L-b.l));b.y=Math.min(Math.max(0,b.y),Math.max(0,C.W-b.w));   // 推到牆就停
+  if(act!=='up'&&act!=='down')climb(b);   // 推到別捆的位置：爬到那捆上面（疊上去），不會卡在裡面重疊
+  settle(i);
   dropAll();   // 下面被移走的話，上面的貨物會往下掉補位
   result.manual.add(i);stopPlay();buildScene(true);recalc();renderSummary();renderSeq();select(i);updUndo();
 }
@@ -1124,11 +1143,20 @@ $('seqBody').addEventListener('click',e=>{
 });
 // 3D 畫面上的移動按鈕（不用往下捲也看得到怎麼動）
 // 鍵盤方向鍵：選了貨物時可以用 ←→（往裡/往門口）↑↓（往左/往右）
+// 鍵盤（像玩遊戲）：方向鍵 移動、W／S 上一層／下一層、R 轉向、Tab 換下一件、Z 復原、Esc 不選
 document.addEventListener('keydown',e=>{
-  if(SEL<0||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
-  const m={ArrowLeft:'x,-10',ArrowRight:'x,10',ArrowUp:'y,-5',ArrowDown:'y,5'}[e.key];
+  if(!result||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
+  const k=e.key.length===1?e.key.toLowerCase():e.key;
+  if(k==='Tab'&&result.placed.length&&(SEL>=0||e.target===document.body)){e.preventDefault();const n=result.placed.length;select(SEL<0?0:(SEL+(e.shiftKey?n-1:1))%n);return}
+  if(SEL<0)return;
+  if(k==='Escape'){select(-1);return}
+  if(k==='z'&&!e.ctrlKey&&!e.metaKey||(k==='z'&&(e.ctrlKey||e.metaKey))){e.preventDefault();const st=result.hist.pop();if(st)restore(st);return}
+  const m={ArrowLeft:'x,-10',ArrowRight:'x,10',ArrowUp:'y,-5',ArrowDown:'y,5',w:'up',s:'down',r:'rot',PageUp:'up',PageDown:'down'}[k];
   if(m){e.preventDefault();doMove(SEL,m);}
 });
+(()=>{let m=false;try{m=localStorage.getItem('cl-selmin')==='1'}catch(e){}
+  const set=v=>{m=v;$('selCtl').classList.toggle('mini',m);$('selMin').textContent=m?'＋':'－';try{localStorage.setItem('cl-selmin',m?'1':'0')}catch(e){}};
+  set(m);$('selMin').addEventListener('click',e=>{e.stopPropagation();set(!m)});})();
 $('selCtl').addEventListener('click',e=>{
   const btn=e.target.closest('[data-act]');if(!btn)return;const act=btn.dataset.act;
   if(act==='close'){select(-1);return}
