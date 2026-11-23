@@ -526,7 +526,26 @@ function rowPack(C,items){
   const place=(t,dir)=>{
     const list=byType.get(t),Lo=layoutOf(list[0]);
     if(!Lo){missed.push(...list);return}
+    // 先疊到已經排好的排上面（不同品項的桿件也可以疊，例如不同長度的斜桿、橫桿），疊不上去的才開新的一排
     let i=0;
+    if(!list[0].floor)while(i<list.length){
+      const it=list[i];if(kg+it.kg>C.payload+E)break;
+      let best=null;
+      for(const q of placed){if(!q.stack)continue;
+        const z=q.z+q.h;if(z+Lo.h>C.H+E)continue;
+        for(const x of [q.x,q.x+q.l-Lo.l])for(const y of [q.y,(C.W-Lo.w)/2,q.y+q.w-Lo.w]){
+          const b={x,y,z,l:Lo.l,w:Lo.w,h:Lo.h,kg:it.kg};
+          if(x<-E||y<-E||x+b.l>C.L+E||y+b.w>C.W+E)continue;
+          if(dir>0?x+b.l>xF+E:x<xB-E)continue;   // 只疊在已經排好的範圍內
+          if(placed.some(o=>overlaps(b,o)))continue;
+          if(it.tiers&&tierOf(b,placed)>it.tiers)continue;
+          if(!supported(b,placed))continue;
+          const sc=z*1e4+(dir>0?x:C.L-x-b.l);
+          if(!best||sc<best.sc)best={...b,sc};
+        }}
+      if(!best)break;
+      delete best.sc;placed.push({...best,type:it.type,stack:it.stack,kg:it.kg,rod:it.rod,tier:tierOf(best,placed)});kg+=it.kg;i++;
+    }
     while(i<list.length){
       if(xB-xF<Lo.l-E){missed.push(...list.slice(i));return}
       const rowX=dir>0?xF:xB-Lo.l,n=Math.min(Lo.cap,list.length-i);let k=0,full=false;
@@ -548,10 +567,12 @@ function rowPack(C,items){
   return {placed,missed,kg,vol:placed.reduce((s,b)=>s+b.l*b.w*b.h,0),strategy:'同品項一排一排'};
 }
 // 比櫃寬還長、只能順著長邊放的貨（要用吊的），位置選「自動」時一律放靠門口，不放最裡面
-function autoPref(r,C){if(r.pref&&r.pref!=='auto')return r.pref;return Math.max(r.l,r.w)>C.W+E?'door':'auto';}
+// 只有「長短貨混裝」時才這樣；整櫃都是長貨（例如全部 TB 2.4m）就照常從最裡面排（使用者確認）
+function autoPref(r,C,mixed=true){if(r.pref&&r.pref!=='auto')return r.pref;return mixed&&Math.max(r.l,r.w)>C.W+E?'door':'auto';}
 function pack(C,rows,gap=0,gapZ=0,gapY=gap,mode='auto'){
   const items=[];
-  rows.forEach((r,t)=>{const oris=forkliftOris(orientations(isRod(r.name)?{...r,up:true}:r),r,C).map(([l,w,h])=>[l+gap,w+gapY,h+gapZ]);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,floor:!!r.floor,pref:autoPref(r,C),tiers:r.tiers||0,rod:isRod(r.name),vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
+  const isLong=r=>Math.max(r.l,r.w)>C.W+E,mixed=rows.some(isLong)&&rows.some(r=>!isLong(r));
+  rows.forEach((r,t)=>{const oris=forkliftOris(orientations(isRod(r.name)?{...r,up:true}:r),r,C).map(([l,w,h])=>[l+gap,w+gapY,h+gapZ]);for(let i=0;i<r.qty;i++)items.push({type:t,kg:r.kg,stack:r.stack,floor:!!r.floor,pref:autoPref(r,C,mixed),tiers:r.tiers||0,rod:isRod(r.name),vol:r.l*r.w*r.h,base:r.l*r.w,oris})});
   // item order × free-point order; keep the run that loads the most volume
   // 「放地板」的貨物一律先裝
   // 有位置偏好的貨物接著先裝，才搶得到指定位置
@@ -655,7 +676,7 @@ function planRows(){
   });
 }
 function rowText(g){
-  const unit=/棧板|木箱/.test(g.n)?'板':'捆';
+  const unit=/木箱/.test(g.n)?'箱':/棧板|U調|下調|調整座/.test(g.n)?'板':'捆';
   const side=g.floorCount>1?`左右並排 ${g.floorCount} ${unit}`:`地板 1 ${unit}`;
   const how=g.minL>1?`疊在上面・第 ${g.minL}${g.maxL>g.minL?'～'+g.maxL:''} 層`:g.maxL>1?`${side}、疊 ${g.maxL} 層`:side;
   return `${g.n} ${g.count} ${unit}（${how}${g.cross?'・橫放':''}）`;
@@ -748,7 +769,11 @@ const CATALOG=[
     .map(([m,u])=>({name:`蜂巢鋼 ${m}m`,pcs:30,unit:u,l:Math.round(m*100),w:110,h:100,perLayer:5}))},
   {group:'基座 φ60.2（100 支/捆，115 × 60 × 40 cm）',items:[{name:'基座 0.2m',pcs:100,unit:2.2,l:115,w:60,h:40,perLayer:25}]},
   {group:'輔助桿 φ60.2（100 支/捆）',items:[{name:'輔助桿 0.25m',pcs:100,unit:2.28,l:115,w:60,h:50,perLayer:20},{name:'輔助桿 0.5m',pcs:100,unit:3.38,l:115,w:105,h:52,perLayer:20}]},
-  {group:'棧板（重量請自己改）',items:[{name:'棧板',pcs:1,unit:1000,l:110,w:110,h:100,pallet:true}]},
+  // 調整座：一板一板（合板棧板約 35 kg），板可以往上疊；packaging.csv 最常見
+  {group:'調整座（一板一板）',items:[{name:'U調（U型調整座 φ48.2x600mm）',pcs:170,unit:5.87,tare:35,l:110,w:110,h:110,perLayer:17,per:'板'},
+    {name:'下調（平面調整座 φ48.2x600mm）',pcs:250,unit:4.81,tare:35,l:110,w:110,h:100,perLayer:25,per:'板'}]},
+  {group:'棧板、木箱（重量、高度請自己改）',items:[{name:'棧板',pcs:1,unit:1000,l:110,w:110,h:100,pallet:true},
+    {name:'木箱',pcs:1,unit:300,l:110,w:100,h:80,pallet:true,stack:true,box:true}]},
 ];
 CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5 可以綁在一起
 const CAT_ITEMS=CATALOG.flatMap(g=>g.items);
@@ -762,16 +787,19 @@ function curItem(){
 // 總支數 → 拆成幾捆＋零頭，馬上顯示
 function catSplit(){
   const it=curItem(),t=Math.max(0,Math.floor(+$('catTotal').value||0));
-  if(it.pallet){$('catSplit').textContent=t?`＝ ${t} 板`:'';return}
+  if(it.pallet){$('catSplit').textContent=t?`＝ ${t} ${it.box?'箱':'板'}`:'';return}
   if(!t){$('catSplit').innerHTML='<span class="note">填單子上的總支數，或直接填捆數。</span>';return}
   const full=Math.floor(t/it.pcs),rem=t%it.pcs;
-  $('catSplit').textContent=`＝ ${full?`${full} 捆`:''}${full&&rem?'＋':''}${rem?`零頭 ${rem} 支`:''}（每捆 ${it.pcs} 支，共約 ${fmt(t*it.unit)} kg）`;
+  const u=it.per||'捆';
+  $('catSplit').textContent=`＝ ${full?`${full} ${u}`:''}${full&&rem?'＋':''}${rem?`零頭 ${rem} 支`:''}（每${u} ${it.pcs} 支，共約 ${fmt(t*it.unit)} kg）`;
 }
 function catInfo(){
   const it=curItem();
-  $('catInfo').textContent=it.pallet?`一板 ${it.l}×${it.w}×${it.h} cm，預設 ${fmt(it.unit)} kg，加入後請改成實際重量。`
-    :`一捆 ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg，每捆約 ${fmt(it.unit*it.pcs)} kg。`;
-  $('pcsWrap').hidden=$('qtyWrap').hidden=!!it.pallet;$('catTotUnit').textContent=it.pallet?'板':'支';
+  const u=it.per||'捆';
+  $('catInfo').textContent=it.box?`一箱 ${it.l}×${it.w}×${it.h} cm，可以疊。高度常不一樣，預設 ${fmt(it.unit)} kg，加入後請在清單改成實際的高度和重量。`
+    :it.pallet?`一板 ${it.l}×${it.w}×${it.h} cm，預設 ${fmt(it.unit)} kg，加入後請改成實際重量。`
+    :`一${u} ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg，每${u}約 ${fmt(it.unit*it.pcs+(it.tare||0))} kg${it.tare?`（含棧板 ${it.tare} kg）`:''}。`;
+  $('pcsWrap').hidden=$('qtyWrap').hidden=!!it.pallet;$('catTotUnit').textContent=it.pallet?(it.box?'箱':'板'):'支';
   catSplit();
 }
 $('catSel').addEventListener('change',()=>{const b=CAT_ITEMS[+$('catSel').value];$('catPcs').value=b.pallet?'':b.pcs;
@@ -811,10 +839,10 @@ function addPartial(it,count){
 // 整捆：同品項累加捆數
 function addCatalog(it,count,full=true){
   if(!full&&!it.pallet){addPartial(it,count);return}
-  const label=it.pallet?it.name:`${it.name}（${it.pcs}支/捆）`;
+  const label=it.pallet?it.name:`${it.name}（${it.pcs}支/${it.per||'捆'}）`;
   const same=cargo.find(r=>r.name===label&&r.l===it.l&&r.w===it.w&&r.h===it.h);
   if(same){same.qty+=count;return}
-  cargo.push({name:label,l:it.l,w:it.w,h:it.h,kg:+(it.unit*it.pcs).toFixed(1),qty:count,up:true,stack:!it.pallet,floor:false,pref:'auto',tiers:it.tiers||0});
+  cargo.push({name:label,l:it.l,w:it.w,h:it.h,kg:+(it.unit*it.pcs+(it.tare||0)).toFixed(1),qty:count,up:true,stack:it.stack??!it.pallet,floor:false,pref:'auto',tiers:it.tiers||0});
 }
 $('catAdd').onclick=()=>{
   // 總支數 → 整捆＋零頭；零頭照現在的規則合成一捆
@@ -1604,7 +1632,7 @@ function tbMaterials(b,col){
   return alongX?[end,end,top,top,side,side]:[side,side,top,top,end,end];
 }
 // 一般棧板示意：木棧板底座 + 包膜貨物，側面標示長寬高（不分品項，統一畫法）
-const isPallet=n=>/棧板|木箱|pallet/i.test(n);
+const isPallet=n=>/棧板|木箱|pallet|U調|下調|調整座/i.test(n);   // 調整座一板一板，畫成棧板示意
 function labelTex(key,wCm,hCm,col,lines){
   const s=4,W=Math.max(64,Math.round(wCm*s)),H=Math.max(48,Math.round(hCm*s));
   return canvasTex(key,W,H,(g,w,h)=>{
