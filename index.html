@@ -1201,7 +1201,7 @@ function buildScene(keepCam){
       const g=ledgerGroup(b,col,boxMeshes.length);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
     }
     if(isDiag(name)){
-      const g=diagGroup(b,col);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
+      const g=diagGroup(b,col,boxMeshes.length);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
     }
     if(isShort(name)){
       const g=shortGroup(b,col,boxMeshes.length);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
@@ -1416,22 +1416,43 @@ function diagHead(key){   // 兩頭：亮色斜桿頭 + 包膜
     for(let x=-h;x<w;x+=22){g.beginPath();g.moveTo(x,h);g.lineTo(x+h*0.5,0);g.stroke();}
   });
 }
-function diagGroup(b,col){
-  const g=new THREE.Group();
+// 斜桿貼紙顏色（使用者確認的制式顏色）：橘色 logo 段 + 一段顏色
+const DIAG_COLORS=[['0.6x1.5','#f2d21b'],['0.9x1.5','#1f4fbf'],['0.9x1.0','#5aa8e6'],['1.2x1.5','#6a3fa0'],['1.5x1.5','#d8281f'],['1.8x1.5','#1f8a3f'],['2.4x1.5','#f2b3c0']];
+function diagColor(name){const n=name.replace(/[×*]/g,'x').replace(/\s/g,'');const hit=DIAG_COLORS.find(([k])=>n.includes(k));return hit?hit[1]:'#3f8a4a';}
+// 斜桿捆（依照片）：鍍鋅管兩頭壓扁、接鑄鋼斜桿頭；管上貼「橘色 logo＋尺寸顏色」貼紙；上下層前後錯開；木板加鋼帶、底下墊枕木
+function diagGroup(b,col,idx){
+  const g=new THREE.Group(),R=seeded(idx||0),nm=cargo[b.row].name;
   const alongX=b.l>=b.w,len=alongX?b.l:b.w,wid=alongX?b.w:b.l;
-  const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
-  const mat=t=>new THREE.MeshLambertMaterial({map:t,color:tint});
-  const sleeper=Math.min(5,b.h*0.07),bh=b.h-sleeper,head=Math.min(28,len*0.13),mid=len-2*head;
-  const body=new THREE.Mesh(new THREE.BoxGeometry(mid,bh-4,wid-6),[mat(diagHead('e')),mat(diagHead('e')),mat(diagLong(10,'t')),mat(diagLong(10,'t')),mat(diagLong(10,'s')),mat(diagLong(10,'s'))]);
-  body.position.y=sleeper+(bh-4)/2;g.add(body);
-  const hm=mat(diagHead('h'));
-  [-1,1].forEach(sd=>{const hd=new THREE.Mesh(new THREE.BoxGeometry(head,bh,wid),hm);hd.position.set(sd*(mid/2+head/2),sleeper+bh/2,0);g.add(hd);});
+  const sleeper=Math.min(5,b.h*0.07),bh=b.h-sleeper;
+  const cols=Math.max(1,Math.round(wid/6)),layers=Math.max(1,Math.round(bh/7));
+  const sx=wid/cols,sy=bh/layers,r=Math.min(2.45,sx*0.42,sy*0.42);
+  const headL=Math.min(10,len*0.06),flatL=Math.min(14,len*0.07),stag=Math.min(8,len*0.04);
+  const pipeLen=Math.max(10,len-2*(headL+flatL)-stag),n=cols*layers;
+  const cyl=(rad,h)=>{const q=new THREE.CylinderGeometry(rad,rad,h,10);q.rotateZ(Math.PI/2);return q};
+  const steel=new THREE.MeshLambertMaterial({color:'#bcc4c9'});
+  const pipes=new THREE.InstancedMesh(cyl(r,pipeLen),steel,n);
+  const flats=new THREE.InstancedMesh(new THREE.BoxGeometry(flatL,r*0.9,r*2.3),steel,2*n);     // 壓扁的管頭
+  const heads=new THREE.InstancedMesh(new THREE.BoxGeometry(headL,Math.min(6,sy*0.9),Math.min(5.5,sx*0.9)),new THREE.MeshLambertMaterial({color:'#8e979e'}),2*n);
+  const labO=new THREE.InstancedMesh(cyl(r*1.06,5),new THREE.MeshLambertMaterial({color:'#f06a1e'}),n);
+  const labC=new THREE.InstancedMesh(cyl(r*1.06,5),new THREE.MeshLambertMaterial({color:diagColor(nm)}),n);
+  const m=new THREE.Matrix4();let k=0;
+  for(let j=0;j<layers;j++)for(let i=0;i<cols;i++){
+    const sh=(j%2?stag/2:-stag/2)+(R()-0.5)*1.5,y=sleeper+sy*(j+0.5),z=-wid/2+sx*(i+0.5);
+    m.makeTranslation(sh,y,z);pipes.setMatrixAt(k,m);
+    const lx=sh-pipeLen/2+pipeLen*0.12;   // 貼紙靠一端
+    m.makeTranslation(lx,y,z);labO.setMatrixAt(k,m);m.makeTranslation(lx+5,y,z);labC.setMatrixAt(k,m);
+    [-1,1].forEach((sd,q)=>{const e=sh+sd*pipeLen/2;
+      m.makeTranslation(e+sd*flatL/2,y,z);flats.setMatrixAt(2*k+q,m);
+      m.makeTranslation(e+sd*(flatL+headL/2),y,z);heads.setMatrixAt(2*k+q,m);});
+    k++;
+  }
+  [pipes,flats,heads,labO,labC].forEach(o=>{o.instanceMatrix.needsUpdate=true;g.add(o)});
   const woodM=new THREE.MeshLambertMaterial({color:'#c9965a'}),strapM=new THREE.MeshLambertMaterial({color:'#1c2126'});
-  [-1,1].forEach(sd=>{
-    const x=sd*(mid/2-8);
-    const sl=new THREE.Mesh(new THREE.BoxGeometry(9,sleeper,wid+20),woodM);sl.position.set(x,sleeper/2,0);g.add(sl);   // 枕木（比捆寬）
-    [-1,1].forEach(s2=>{const bd=new THREE.Mesh(new THREE.BoxGeometry(7,bh-2,1.5),woodM);bd.position.set(x,sleeper+(bh-2)/2,s2*(wid/2-2.2));g.add(bd);});
-    const st=new THREE.Mesh(new THREE.BoxGeometry(2.5,bh-1.4,wid-3),strapM);st.position.set(x,sleeper+(bh-2)/2,0);g.add(st);
+  [-0.3,0.3].forEach(p=>{
+    const x=pipeLen*p;
+    const sl=new THREE.Mesh(new THREE.BoxGeometry(9,sleeper,wid),woodM);sl.position.set(x,sleeper/2,0);g.add(sl);   // 枕木
+    [-1,1].forEach(s2=>{const bd=new THREE.Mesh(new THREE.BoxGeometry(7,bh,1.5),woodM);bd.position.set(x,sleeper+bh/2,s2*(wid/2+0.8));g.add(bd);});
+    const st=new THREE.Mesh(new THREE.BoxGeometry(2.5,bh+0.8,wid+2.5),strapM);st.position.set(x+5,sleeper+bh/2,0);g.add(st);
   });
   if(!alongX)g.rotation.y=Math.PI/2;
   return g;
@@ -1498,7 +1519,7 @@ const isHoney=n=>/蜂巢鋼/.test(n)&&!isPallet(n);
 function honeyMaterials(b,col){
   const alongX=b.l>=b.w,len=alongX?b.l:b.w,cols=5,rows=6;
   const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
-  const holes=Math.max(3,Math.round(len/16));
+  const holes=Math.max(2,Math.round(len/15));   // 大圓孔每 15 cm 一個（0.3m = 2 個、0.6m = 4 個）
   const top=canvasTex(`hTop-${holes}`,1024,cols*60,(g,w,h)=>{const sh=h/cols,p=w/holes;
     for(let r=0;r<cols;r++){const y=r*sh;g.fillStyle=r%2?'#bcc5cb':'#cdd4d9';g.fillRect(0,y,w,sh);g.fillStyle='#7f8a92';g.fillRect(0,y,w,2);
       for(let k=0;k<holes;k++){g.fillStyle='#3a4248';g.beginPath();g.arc((k+0.5)*p,y+sh/2,Math.min(p,sh)*0.32,0,7);g.fill();}}
