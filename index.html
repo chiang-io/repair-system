@@ -174,8 +174,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
 }
 </style>
 
-</head>
-<body>
+</head><body>
 <div class="wrap">
   <header>
     <div>
@@ -239,12 +238,18 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
           <select id="catSel"></select>
         </div>
         <div class="row">
-          <input type="number" id="catQty" min="0" step="1" value="10" aria-label="整捆數" style="width:80px">
-          <span id="catUnitLbl">捆</span>
-          <span id="remWrap" class="row" style="gap:6px">＋ 零頭
-            <input type="number" id="catRem" min="0" step="1" value="0" aria-label="零頭支數" style="width:80px"> 支</span>
+          <label for="catTotal">總共</label>
+          <input type="number" id="catTotal" min="0" step="1" placeholder="單子上的數量" style="width:120px">
+          <span id="catTotUnit">支</span>
+          <span id="pcsWrap" class="row" style="gap:6px">・每捆
+            <input type="number" id="catPcs" min="1" step="1" aria-label="每捆幾支" style="width:70px"> 支</span>
+          <span id="qtyWrap" class="row" style="gap:6px">・或直接填
+            <input type="number" id="catQty" min="0" step="1" placeholder="捆數" aria-label="整捆數" style="width:70px"> 捆</span>
+        </div>
+        <p id="catSplit" style="margin:0;font-weight:700"></p>
+        <div class="row">
           <button id="catAdd" type="button" class="primary">加入清單</button>
-          <button id="mixAdd" type="button" title="把零頭支數放進同一捆，跟其他長度綁在一起">＋ 放進混綁</button>
+          <button id="mixAdd" type="button" title="把「總共」填的支數放進同一捆，跟其他長度綁在一起">＋ 放進混綁</button>
           <button id="clearRows" type="button">清空清單</button>
         </div>
         <p class="note" id="catInfo"></p>
@@ -739,13 +744,33 @@ const CATALOG=[
 CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5 可以綁在一起
 const CAT_ITEMS=CATALOG.flatMap(g=>g.items);
 $('catSel').innerHTML=CATALOG.map(g=>`<optgroup label="${g.group}">${g.items.map(it=>`<option value="${CAT_ITEMS.indexOf(it)}">${it.name}</option>`).join('')}</optgroup>`).join('');
+// 選到的品項；「每捆幾支」改過時，照積木的方式算新的一捆尺寸（寬不變，高照層數）
+function curItem(){
+  const b=CAT_ITEMS[+$('catSel').value];if(b.pallet)return b;
+  const p=Math.max(1,Math.floor(+$('catPcs').value||0))||b.pcs;
+  return p===b.pcs?b:{...b,pcs:p,...partialDims(b,p)};
+}
+// 總支數 → 拆成幾捆＋零頭，馬上顯示
+function catSplit(){
+  const it=curItem(),t=Math.max(0,Math.floor(+$('catTotal').value||0));
+  if(it.pallet){$('catSplit').textContent=t?`＝ ${t} 板`:'';return}
+  if(!t){$('catSplit').innerHTML='<span class="note">填單子上的總支數，或直接填捆數。</span>';return}
+  const full=Math.floor(t/it.pcs),rem=t%it.pcs;
+  $('catSplit').textContent=`＝ ${full?`${full} 捆`:''}${full&&rem?'＋':''}${rem?`零頭 ${rem} 支`:''}（每捆 ${it.pcs} 支，共約 ${fmt(t*it.unit)} kg）`;
+}
 function catInfo(){
-  const it=CAT_ITEMS[+$('catSel').value];
+  const it=curItem();
   $('catInfo').textContent=it.pallet?`一板 ${it.l}×${it.w}×${it.h} cm，預設 ${fmt(it.unit)} kg，加入後請改成實際重量。`
     :`一捆 ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg，每捆約 ${fmt(it.unit*it.pcs)} kg。`;
-  $('remWrap').hidden=!!it.pallet;$('catUnitLbl').textContent=it.pallet?'板':'捆';
+  $('pcsWrap').hidden=$('qtyWrap').hidden=!!it.pallet;$('catTotUnit').textContent=it.pallet?'板':'支';
+  catSplit();
 }
-$('catSel').addEventListener('change',catInfo);catInfo();
+$('catSel').addEventListener('change',()=>{const b=CAT_ITEMS[+$('catSel').value];$('catPcs').value=b.pallet?'':b.pcs;
+  if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*(b.pallet?1:b.pcs);catInfo();});
+$('catTotal').addEventListener('input',()=>{$('catQty').value='';catSplit();});
+$('catQty').addEventListener('input',()=>{const q=Math.max(0,Math.floor(+$('catQty').value||0));$('catTotal').value=q?q*curItem().pcs:'';catSplit();});
+$('catPcs').addEventListener('input',()=>{if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*curItem().pcs;catInfo();});
+$('catPcs').value=CAT_ITEMS[+$('catSel').value].pcs;
 // 零頭的尺寸：依支數算層數決定高度；TB 40 支以內只有一小捆（4 支寬，約 55 cm 寬，每層約 5.5 cm）
 function partialDims(it,pcs){
   if(it.tb&&pcs<=40)return {w:55,h:Math.max(20,Math.round(Math.ceil(pcs/4)*5.5))};
@@ -757,8 +782,8 @@ function partialDims(it,pcs){
 const famName=it=>it.name.replace(/\s*[\d.x]+m$/,'');
 function updatePartial(r){
   const parts=Object.entries(r.mix).map(([n,c])=>[CAT_ITEMS.find(x=>x.name===n),c]);
-  const it0=parts[0][0],total=parts.reduce((t,[,c])=>t+c,0),fullPcs=it0.pcs;
-  const d=total>=fullPcs?{w:it0.w,h:it0.h}:partialDims(it0,total);
+  const it0=parts[0][0],total=parts.reduce((t,[,c])=>t+c,0),fullPcs=r.cap||it0.pcs;
+  const d=total===it0.pcs?{w:it0.w,h:it0.h}:partialDims(it0,total);
   const desc=parts.map(([x,c])=>`${x.name.slice(famName(x).length).trim()}×${c}`).join('、');
   Object.assign(r,{l:Math.max(...parts.map(([x])=>x.l)),w:d.w,h:d.h,kg:+parts.reduce((t,[x,c])=>t+x.unit*c,0).toFixed(1),qty:1,part:total,
     name:parts.length===1?`${it0.name}（零頭 ${total}支）`:`${famName(it0)} ${total>=fullPcs?'混合整捆':'零頭合併'}（${desc}，共${total}支）`});
@@ -766,9 +791,9 @@ function updatePartial(r){
 function addPartial(it,count){
   let left=count;
   while(left>0){
-    let r=cargo.find(q=>q.fam===it.fam&&q.part&&q.part<it.pcs);
-    if(!r){r={up:true,stack:true,floor:false,pref:'auto',tiers:it.tiers||0,fam:it.fam,mix:{}};cargo.push(r);}
-    const take=Math.min(it.pcs-r.part||it.pcs,left);
+    let r=cargo.find(q=>q.fam===it.fam&&q.part&&q.part<it.pcs&&(q.cap||it.pcs)===it.pcs);   // 每捆支數一樣的零頭才合在一起
+    if(!r){r={up:true,stack:true,floor:false,pref:'auto',tiers:it.tiers||0,fam:it.fam,cap:it.pcs,mix:{}};cargo.push(r);}
+    const take=Math.min(it.pcs-(r.part||0),left);
     r.mix[it.name]=(r.mix[it.name]||0)+take;left-=take;updatePartial(r);
     const kinds=Object.keys(r.mix);
     if(r.part>=it.pcs&&kinds.length===1){cargo.splice(cargo.indexOf(r),1);addCatalog(it,1,true);}   // 同長度湊滿 → 一般整捆
@@ -783,14 +808,13 @@ function addCatalog(it,count,full=true){
   cargo.push({name:label,l:it.l,w:it.w,h:it.h,kg:+(it.unit*it.pcs).toFixed(1),qty:count,up:true,stack:!it.pallet,floor:false,pref:'auto',tiers:it.tiers||0});
 }
 $('catAdd').onclick=()=>{
-  // 整捆數 + 零頭支數；零頭滿一捆會自動併成整捆
-  const it=CAT_ITEMS[+$('catSel').value];
-  let full=Math.max(0,Math.floor(+$('catQty').value||0)),rem=it.pallet?0:Math.max(0,Math.floor(+$('catRem').value||0));
-  full+=Math.floor(rem/it.pcs);rem%=it.pcs;
-  if(!full&&!rem)return;
+  // 總支數 → 整捆＋零頭；零頭照現在的規則合成一捆
+  const it=curItem(),t=Math.max(0,Math.floor(+$('catTotal').value||0));
+  const full=it.pallet?t:Math.floor(t/it.pcs),rem=it.pallet?0:t%it.pcs;
+  if(!full&&!rem){$('catInfo').textContent='先填總共幾支（或幾捆）。';return}
   if(full)addCatalog(it,full);
   if(rem)addCatalog(it,rem,false);
-  $('catRem').value=0;
+  $('catTotal').value='';$('catQty').value='';catSplit();
   renderCargo();run();
   // 加入後馬上告訴使用者有沒有裝不下
   const m=result.missed.length;
@@ -805,20 +829,20 @@ function renderMix(){
   $('mixList').innerHTML=`<b>混綁中（${mixLabel()}）</b>：${MIX.map(m=>`${m.it.name} × ${m.n} 支`).join('、')}　<span class="${tot>it0.pcs?'bad':'note'}">共 ${tot} 支${tot>it0.pcs?`，超過一捆 ${it0.pcs} 支`:`，一捆最多 ${it0.pcs} 支`}</span>`;
 }
 $('mixAdd').onclick=()=>{
-  const it=CAT_ITEMS[+$('catSel').value],n=Math.max(0,Math.floor(+$('catRem').value||0));
+  const it=curItem(),n=Math.max(0,Math.floor(+$('catTotal').value||0));
   if(it.pallet){$('catInfo').textContent='棧板不能混綁。';return}
-  if(!n){$('catInfo').textContent='先在「零頭」填這個長度要綁幾支，再按「放進混綁」。';return}
+  if(!n){$('catInfo').textContent='先在「總共」填這個長度要綁幾支，再按「放進混綁」。';return}
   if(MIX.length&&MIX[0].it.mixg!==it.mixg){$('catInfo').textContent=`這個不能跟目前的綁在一起（可以混綁的：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5、同一種 Top Beam）。`;return}
-  const tot=MIX.reduce((t,m)=>t+m.n,0)+n;
-  if(tot>it.pcs){$('catInfo').innerHTML=`<b class="bad">一捆最多 ${it.pcs} 支</b>，現在會變成 ${tot} 支。`;return}
-  const same=MIX.find(m=>m.it===it);if(same)same.n+=n;else MIX.push({it,n});
-  $('catRem').value=0;$('catInfo').textContent='已放進混綁，可以再選別的長度繼續加。';renderMix();
+  const tot=MIX.reduce((t,m)=>t+m.n,0)+n,cap=MIX.length?MIX[0].it.pcs:it.pcs;
+  if(tot>cap){$('catInfo').innerHTML=`<b class="bad">一捆最多 ${cap} 支</b>，現在會變成 ${tot} 支。`;return}
+  const same=MIX.find(m=>m.it.name===it.name);if(same)same.n+=n;else MIX.push({it,n});
+  $('catTotal').value='';$('catQty').value='';catSplit();$('catInfo').textContent='已放進混綁，可以再選別的長度繼續加。';renderMix();
 };
 $('mixClear').onclick=()=>{MIX=[];renderMix();};
 $('mixDone').onclick=()=>{
   if(!MIX.length)return;
   const it0=MIX.slice().sort((a,b)=>b.it.l-a.it.l)[0].it,tot=MIX.reduce((t,m)=>t+m.n,0);
-  const d=tot>=it0.pcs?{w:it0.w,h:it0.h}:partialDims(it0,tot),q=Math.max(1,Math.floor(+$('mixQty').value||1));
+  const d=tot===it0.pcs?{w:it0.w,h:it0.h}:partialDims(it0,tot),q=Math.max(1,Math.floor(+$('mixQty').value||1));
   cargo.push({name:`${mixLabel()} 混綁（${MIX.map(m=>MIX.every(x=>x.it.fam===m.it.fam)?m.it.name.slice(famName(m.it).length).trim()+'×'+m.n:m.it.name+'×'+m.n).join('、')}，共${tot}支）`,
     l:Math.max(...MIX.map(m=>m.it.l)),w:d.w,h:d.h,kg:+MIX.reduce((t,m)=>t+m.it.unit*m.n,0).toFixed(1),qty:q,
     up:true,stack:true,floor:false,pref:'auto',tiers:it0.tiers||0});
@@ -1179,6 +1203,9 @@ function buildScene(keepCam){
     if(isDiag(name)){
       const g=diagGroup(b,col);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
     }
+    if(isShort(name)){
+      const g=shortGroup(b,col,boxMeshes.length);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
+    }
     if(isStd(name)){
       const g=stdGroup(b,col,boxMeshes.length);g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
     }
@@ -1265,7 +1292,56 @@ function tbEnd(widCm,hCm){
 // 80 支 = 兩小捆左右靠在一起，外面再用兩道鋼帶綁成一大捆；底下墊兩根枕木，每層型鋼略有錯位
 // 主架／平主架捆：圓管 10 支寬 × 10 層 = 100 支；每 50 cm 一個圓盤；
 // 底下墊兩根枕木，兩側直立木板加黑色鋼帶綁緊（依主桿照片）
-const isStd=n=>/主架|主桿|立桿|基座|輔助桿/.test(n)&&!/主架座/.test(n)&&!isPallet(n);
+const isStd=n=>/主架|主桿|立桿/.test(n)&&!/主架座/.test(n)&&!isPallet(n);
+// 基座、輔助桿捆（依庫存區照片）：短管頭尾接著排（基座 0.2m 一捆長 115 = 5 支），
+// 每支 = 一端粗套管 + 一個圓盤 + 細管（有小孔）；上下左右相鄰的方向相反，圓盤錯開。兩道鋼帶加側邊木板，底下墊枕木。
+const isShort=n=>/基座|輔助桿/.test(n)&&!isPallet(n);
+function shortGroup(b,col,idx){
+  const g=new THREE.Group(),R=seeded(idx),nm=cargo[b.row].name;
+  const alongX=b.l>=b.w,len=alongX?b.l:b.w,wid=alongX?b.w:b.l;
+  const sleeper=Math.min(4,b.h*0.08),bh=b.h-sleeper;
+  const each=/基座/.test(nm)?23:/0\.5/.test(nm)?57:29,aux=/輔助桿/.test(nm);
+  const nAlong=Math.max(1,Math.round(len/each)),pl=len/nAlong;
+  const cols=Math.max(1,Math.round(wid/12)),layers=Math.max(1,Math.round(bh/10));
+  const sx=wid/cols,sy=bh/layers,r=Math.min(3.0,sx*0.3,sy*0.33),rs=r*1.25,rd=Math.min(6,sx*0.5,sy*0.62);
+  const sockL=Math.min(11,pl*0.45),tubeL=pl-sockL-0.6,n=cols*layers*nAlong;
+  const cyl=(rad,h,seg=14)=>{const q=new THREE.CylinderGeometry(rad,rad,h,seg);q.rotateZ(Math.PI/2);return q};
+  const steel=new THREE.MeshLambertMaterial({color:'#c3cbd0'}),steel2=new THREE.MeshLambertMaterial({color:'#d6dce0'});
+  const tubes=new THREE.InstancedMesh(cyl(r,tubeL),steel,n),socks=new THREE.InstancedMesh(cyl(rs,sockL),steel2,n);
+  const discs=new THREE.InstancedMesh(cyl(rd,0.9,20),new THREE.MeshLambertMaterial({color:'#b5bec4'}),n);
+  const holeM=new THREE.MeshLambertMaterial({color:'#2a3036'});
+  const holes=new THREE.InstancedMesh(new THREE.BoxGeometry(1.1,0.3,1.1),holeM,n);
+  const ends=new THREE.InstancedMesh(cyl(r*0.8,0.3,14),holeM,2*cols*layers);   // 捆兩頭看得到的管口
+  const labs=aux?new THREE.InstancedMesh(cyl(r*1.04,Math.min(6,tubeL*0.35)),new THREE.MeshLambertMaterial({color:'#e8c21a'}),n):null;   // 輔助桿黃色貼紙
+  const m=new THREE.Matrix4();let k=0,e=0;
+  for(let j=0;j<layers;j++)for(let i=0;i<cols;i++){
+    const y=sleeper+sy*(j+0.5)+(R()-0.5)*0.6,z=-wid/2+sx*(i+0.5)+(R()-0.5)*0.6;
+    for(let a=0;a<nAlong;a++){
+      const dir=(i+j+a)%2?1:-1,x0=-len/2+pl*(a+0.5);   // dir：套管在哪一頭
+      const sc=x0+dir*(pl/2-sockL/2),tc=x0-dir*(pl/2-tubeL/2),dc=x0+dir*(pl/2-sockL-0.3);
+      m.makeTranslation(sc,y,z);socks.setMatrixAt(k,m);
+      m.makeTranslation(tc,y,z);tubes.setMatrixAt(k,m);
+      m.makeTranslation(dc,y,z);discs.setMatrixAt(k,m);
+      m.makeTranslation(tc-dir*tubeL*0.25,y+r,z);holes.setMatrixAt(k,m);
+      if(labs){m.makeTranslation(tc+dir*tubeL*0.1,y,z);labs.setMatrixAt(k,m);}
+      if(a===0){m.makeTranslation(-len/2-0.1,y,z);ends.setMatrixAt(e++,m);}
+      if(a===nAlong-1){m.makeTranslation(len/2+0.1,y,z);ends.setMatrixAt(e++,m);}
+      k++;
+    }
+  }
+  [tubes,socks,discs,holes,ends,labs].forEach(o=>{if(o){o.instanceMatrix.needsUpdate=true;g.add(o)}});
+  const woodM=new THREE.MeshLambertMaterial({color:'#b98d58'}),strapM=new THREE.MeshLambertMaterial({color:'#2a2622'});
+  [-0.3,0.3].forEach(p=>{
+    const x=len*p;
+    const sl=new THREE.Mesh(new THREE.BoxGeometry(9,sleeper,wid),woodM);sl.position.set(x,sleeper/2,0);g.add(sl);   // 枕木
+    [-1,1].forEach(sd=>{const bd=new THREE.Mesh(new THREE.BoxGeometry(8,bh,1.5),woodM);bd.position.set(x+4,sleeper+bh/2,sd*(wid/2+0.8));g.add(bd);});   // 側邊木板
+    // 鋼帶：繞捆一圈（上、下、兩側），中間是空的，看得到管子
+    [[0,sleeper+bh+0.2,2.2,0.4,wid+3.4],[0,sleeper-0.2,2.2,0.4,wid+3.4],[0,sleeper+bh/2,2.2,bh+0.8,0.4,-1],[0,sleeper+bh/2,2.2,bh+0.8,0.4,1]].forEach(([dx,y,a,h,w,sd])=>{
+      const st=new THREE.Mesh(new THREE.BoxGeometry(a,h,w),strapM);st.position.set(x+dx,y,sd?sd*(wid/2+1.7):0);g.add(st);});
+  });
+  if(!alongX)g.rotation.y=Math.PI/2;
+  return g;
+}
 function stdEnd(cols,rows){
   return canvasTex(`stdEnd-${cols}-${rows}`,cols*40,rows*40,(g,w,h)=>{
     g.fillStyle='#2f363c';g.fillRect(0,0,w,h);
@@ -1280,7 +1356,7 @@ function stdEnd(cols,rows){
   });
 }
 function stdLong(lenCm,n,key,each){
-  const discs=Math.max(1,Math.round(lenCm/(each||50)));   // 基座、輔助桿：短管頭尾接著排，每支一個圓盤
+  const discs=Math.max(1,Math.round(lenCm/(each||50)));
   return canvasTex(`stdLong-${key}-${n}-${discs}`,1024,n*24,(g,w,h)=>{
     const lh=h/n;
     for(let j=0;j<n;j++){
@@ -1302,8 +1378,9 @@ function stdGroup(b,col,idx){
   const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
   const mat=t=>new THREE.MeshLambertMaterial({map:t,color:tint});
   const sleeper=Math.min(5,b.h*0.06),bh=b.h-sleeper;
-  const nm=cargo[b.row].name,each=/基座/.test(nm)?23:/輔助桿/.test(nm)?(/0\.5/.test(nm)?57:29):0;   // 短件每支長度（含套管）
-  const end=mat(stdEnd(10,10)),side=mat(stdLong(len,10,'s'+each,each)),top=mat(stdLong(len,10,'t'+each,each));
+  // 圓盤：照桿子長度每 50 cm 一個（1.0m = 2 個、1.5m = 3 個、3.0m = 6 個），不是照一捆的長度
+  const rodM=+((cargo[b.row].name.match(/([\d.]+)\s*m/)||[])[1]||0),discN=Math.max(1,Math.round(rodM>0?rodM/0.5:len/50));
+  const end=mat(stdEnd(10,10)),side=mat(stdLong(len,10,'s',len/discN)),top=mat(stdLong(len,10,'t',len/discN));
   const body=new THREE.Mesh(new THREE.BoxGeometry(len-2,bh,wid-3),[end,end,top,top,side,side]);
   body.position.y=sleeper+bh/2;g.add(body);
   const woodM=new THREE.MeshLambertMaterial({color:'#c9965a'}),strapM=new THREE.MeshLambertMaterial({color:'#1c2126'});
@@ -1544,7 +1621,7 @@ $('play').onclick=()=>{
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
 new MutationObserver(applyTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
 
-init3d();$('loadSample').onclick();
+init3d();renderContainers();renderCargo();run();   // 打開時是空櫃子，要看範例再按「載入範例」
 </script>
-</body>
-</html>
+
+</body></html>
