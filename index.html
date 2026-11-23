@@ -571,8 +571,8 @@ function pack(C,rows,gap=0,gapZ=0,gapY=gap,mode='auto'){
 
 // ---------- UI ----------
 const $=id=>document.getElementById(id);
-// 桿件類（TB、主架、平主架、橫桿、斜桿、蜂巢鋼）一律平放，不能側放或立起來
-function isRod(n){return /top\s*beam|主架|主桿|立桿|橫桿|斜桿|蜂巢鋼/i.test(n)&&!/棧板|木箱|主架座|橫桿頭|斜桿頭|接頭/.test(n)}
+// 桿件類（TB、主架、平主架、橫桿、斜桿、蜂巢鋼、基座、輔助桿）一律平放，不能側放或立起來
+function isRod(n){return /top\s*beam|主架|主桿|立桿|橫桿|斜桿|蜂巢鋼|基座|輔助桿/i.test(n)&&!/棧板|木箱|主架座|橫桿頭|斜桿頭|接頭/.test(n)}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=(n,d=0)=>n.toLocaleString('zh-TW',{minimumFractionDigits:d,maximumFractionDigits:d});
 function renderContainers(){
@@ -732,9 +732,11 @@ const CATALOG=[
     .map(([m,u,l])=>({name:`斜桿 ${m}m`,pcs:100,unit:u,l,w:60,h:70,perLayer:10}))},
   {group:'蜂巢鋼 200×161mm（30 支/捆，長 × 110 × 100 cm）',items:[['0.6',13.36],['0.9',18.18],['1.2',22.98],['1.5',27.63],['1.8',32.78],['2.4',42.7]]
     .map(([m,u])=>({name:`蜂巢鋼 ${m}m`,pcs:30,unit:u,l:Math.round(m*100),w:110,h:100,perLayer:5}))},
+  {group:'基座 φ60.2（100 支/捆，115 × 60 × 40 cm）',items:[{name:'基座 0.2m',pcs:100,unit:2.2,l:115,w:60,h:40,perLayer:25}]},
+  {group:'輔助桿 φ60.2（100 支/捆）',items:[{name:'輔助桿 0.25m',pcs:100,unit:2.28,l:115,w:60,h:50,perLayer:20},{name:'輔助桿 0.5m',pcs:100,unit:3.38,l:115,w:105,h:52,perLayer:20}]},
   {group:'棧板（重量請自己改）',items:[{name:'棧板',pcs:1,unit:1000,l:110,w:110,h:100,pallet:true}]},
 ];
-CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿可以綁在一起
+CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5 可以綁在一起
 const CAT_ITEMS=CATALOG.flatMap(g=>g.items);
 $('catSel').innerHTML=CATALOG.map(g=>`<optgroup label="${g.group}">${g.items.map(it=>`<option value="${CAT_ITEMS.indexOf(it)}">${it.name}</option>`).join('')}</optgroup>`).join('');
 function catInfo(){
@@ -806,7 +808,7 @@ $('mixAdd').onclick=()=>{
   const it=CAT_ITEMS[+$('catSel').value],n=Math.max(0,Math.floor(+$('catRem').value||0));
   if(it.pallet){$('catInfo').textContent='棧板不能混綁。';return}
   if(!n){$('catInfo').textContent='先在「零頭」填這個長度要綁幾支，再按「放進混綁」。';return}
-  if(MIX.length&&MIX[0].it.mixg!==it.mixg){$('catInfo').textContent=`這個不能跟目前的綁在一起（可以混綁的：主架＋平主架、橫桿＋斜桿、同一種 Top Beam）。`;return}
+  if(MIX.length&&MIX[0].it.mixg!==it.mixg){$('catInfo').textContent=`這個不能跟目前的綁在一起（可以混綁的：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5、同一種 Top Beam）。`;return}
   const tot=MIX.reduce((t,m)=>t+m.n,0)+n;
   if(tot>it.pcs){$('catInfo').innerHTML=`<b class="bad">一捆最多 ${it.pcs} 支</b>，現在會變成 ${tot} 支。`;return}
   const same=MIX.find(m=>m.it===it);if(same)same.n+=n;else MIX.push({it,n});
@@ -1263,7 +1265,7 @@ function tbEnd(widCm,hCm){
 // 80 支 = 兩小捆左右靠在一起，外面再用兩道鋼帶綁成一大捆；底下墊兩根枕木，每層型鋼略有錯位
 // 主架／平主架捆：圓管 10 支寬 × 10 層 = 100 支；每 50 cm 一個圓盤；
 // 底下墊兩根枕木，兩側直立木板加黑色鋼帶綁緊（依主桿照片）
-const isStd=n=>/主架|主桿|立桿/.test(n)&&!/主架座/.test(n)&&!isPallet(n);
+const isStd=n=>/主架|主桿|立桿|基座|輔助桿/.test(n)&&!/主架座/.test(n)&&!isPallet(n);
 function stdEnd(cols,rows){
   return canvasTex(`stdEnd-${cols}-${rows}`,cols*40,rows*40,(g,w,h)=>{
     g.fillStyle='#2f363c';g.fillRect(0,0,w,h);
@@ -1277,8 +1279,8 @@ function stdEnd(cols,rows){
     }
   });
 }
-function stdLong(lenCm,n,key){
-  const discs=Math.max(1,Math.round(lenCm/50));
+function stdLong(lenCm,n,key,each){
+  const discs=Math.max(1,Math.round(lenCm/(each||50)));   // 基座、輔助桿：短管頭尾接著排，每支一個圓盤
   return canvasTex(`stdLong-${key}-${n}-${discs}`,1024,n*24,(g,w,h)=>{
     const lh=h/n;
     for(let j=0;j<n;j++){
@@ -1300,7 +1302,8 @@ function stdGroup(b,col,idx){
   const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
   const mat=t=>new THREE.MeshLambertMaterial({map:t,color:tint});
   const sleeper=Math.min(5,b.h*0.06),bh=b.h-sleeper;
-  const end=mat(stdEnd(10,10)),side=mat(stdLong(len,10,'s')),top=mat(stdLong(len,10,'t'));
+  const nm=cargo[b.row].name,each=/基座/.test(nm)?23:/輔助桿/.test(nm)?(/0\.5/.test(nm)?57:29):0;   // 短件每支長度（含套管）
+  const end=mat(stdEnd(10,10)),side=mat(stdLong(len,10,'s'+each,each)),top=mat(stdLong(len,10,'t'+each,each));
   const body=new THREE.Mesh(new THREE.BoxGeometry(len-2,bh,wid-3),[end,end,top,top,side,side]);
   body.position.y=sleeper+bh/2;g.add(body);
   const woodM=new THREE.MeshLambertMaterial({color:'#c9965a'}),strapM=new THREE.MeshLambertMaterial({color:'#1c2126'});
