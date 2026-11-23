@@ -115,7 +115,11 @@ td.mv button{padding:3px 6px;font-size:.76rem;margin-right:2px}
 .contedit[open]{padding:10px;border:1px solid var(--line);border-radius:4px}
 .cin{width:80px;font:inherit;font-family:var(--f-mono);padding:4px 6px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)}
 .addbar{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:4px;background:var(--sunk)}
-.addbar select#catSel{flex:1;min-width:0;max-width:100%}
+.addbar select#catFam{flex:1;min-width:0;max-width:260px;font-weight:600}
+.sizes{display:flex;flex-wrap:wrap;gap:6px}
+.sizes:empty{display:none}
+.sizes button{padding:6px 12px;font-family:var(--f-mono);font-size:.85rem;border-radius:999px;background:var(--surface)}
+.sizes button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
 .selctl{position:absolute;left:10px;right:10px;bottom:10px;background:var(--surface);border:2px solid #f2b400;border-radius:6px;padding:8px 10px;display:grid;gap:6px;z-index:3}
 .pad{display:flex;gap:10px;align-items:center}
 .dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,40px);gap:3px;flex:none}
@@ -241,8 +245,11 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
       </div>
       <div class="addbar">
         <div class="row">
-          <label for="catSel"><b>從常用品項加入</b></label>
-          <select id="catSel"></select>
+          <label for="catFam"><b>從常用品項加入</b></label>
+          <select id="catFam" aria-label="品項"></select>
+          <select id="catSel" hidden aria-hidden="true"></select>
+        </div>
+        <div class="sizes" id="catSizes" role="group" aria-label="尺寸">
         </div>
         <div class="row">
           <label for="catTotal">總共</label>
@@ -256,14 +263,15 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
         <p id="catSplit" style="margin:0;font-weight:700"></p>
         <div class="row">
           <button id="catAdd" type="button" class="primary">加入清單</button>
-          <button id="mixAdd" type="button" title="把「總共」填的支數放進同一捆，跟其他長度綁在一起">＋ 放進混綁</button>
+          <button id="mixAdd" type="button" title="不同長度綁成一捆：按了會列出可以一起綁的長度，直接填支數">混綁一捆…</button>
           <button id="clearRows" type="button">清空清單</button>
         </div>
         <p class="note" id="catInfo"></p>
         <div class="mixbar" id="mixBar" hidden>
           <div id="mixList"></div>
-          <div class="row"><span>綁成</span><input type="number" id="mixQty" min="1" step="1" value="1" style="width:70px" aria-label="綁幾捆"><span>捆一樣的</span>
-            <button type="button" id="mixDone" class="primary">綁好，加入清單</button><button type="button" id="mixClear">清除</button></div>
+          <div class="row"><span id="mixSum"></span></div>
+          <div class="row"><span>一樣的綁</span><input type="number" id="mixQty" min="1" step="1" value="1" style="width:70px" aria-label="綁幾捆"><span>捆</span>
+            <button type="button" id="mixDone" class="primary">加入清單</button><button type="button" id="mixClear">取消</button></div>
         </div>
       </div>
       <div class="row">
@@ -326,7 +334,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
             </div>
           </div>
         </div>
-        <p class="stagehint" id="stageHint">點一下 3D 裡的貨物（或按 Tab）就能移動它・鍵盤：方向鍵 移動、W／S 上下層、R 轉向、Z 復原、Esc 不選</p>
+        <p class="stagehint" id="stageHint">點一下貨物：視角會移到它、可以移動它・右鍵拖曳（手機兩指）平移・雙擊空白處回原本視角・鍵盤：方向鍵 移動、W／S 上下層、R 轉向、Z 復原、Esc 不選</p>
       </div>
       <div class="row">
         <button id="play" type="button" aria-label="播放裝載順序">▶ 播放</button>
@@ -757,13 +765,13 @@ $('cargoBody').addEventListener('click',e=>{const d=e.target.closest('[data-del]
 const CATALOG=[
   {group:'Top Beam（80 支/捆，長 × 110 × 55 cm）',items:[['1.2',6.85],['1.5',8.21],['1.8',9.85],['2.1',11.5],['2.4',13.96],['2.7',14.78],['3.0',16.42],['3.3',19.32],['3.6',19.7],['4.2',23.8]]
     .map(([m,u])=>({name:`Top Beam ${m}m`,pcs:80,unit:u,l:Math.round(m*100),w:110,h:55,perLayer:8,tb:true}))},
-  {group:'主架 φ60.2（100 支/捆，長 + 25 × 115 × 95 cm）',items:[['1.0',6.8],['1.5',9.68],['3.0',18.45]]
+  {group:'主架 φ60.2（100 支/捆，長 + 25 × 115 × 95 cm）',items:[['1.0',6.8],['1.5',9.68],['2.0',12.47],['3.0',18.45]]
     .map(([m,u])=>({name:`主架 ${m}m`,pcs:100,unit:u,l:Math.round(m*100)+25,w:115,h:95,perLayer:10}))},
-  {group:'平主架 φ60.2（100 支/捆，長 + 5 × 115 × 95 cm）',items:[['1.0',5.75],['1.5',8.63],['3.0',17.4]]
+  {group:'平主架 φ60.2（100 支/捆，長 + 5 × 115 × 95 cm）',items:[['1.0',5.75],['1.5',8.63],['2.0',11.42],['3.0',17.4]]
     .map(([m,u])=>({name:`平主架 ${m}m`,pcs:100,unit:u,l:Math.round(m*100)+5,w:115,h:95,perLayer:10}))},
   {group:'橫桿 φ48.6（100 支/捆，長 × 60 × 70 cm）',items:[['0.6',2.4],['0.9',3.18],['1.2',3.86],['1.5',4.7],['1.8',5.5],['2.4',7.32],['3.0',8.88]]
     .map(([m,u])=>({name:`橫桿 ${m}m`,pcs:100,unit:u,l:Math.round(m*100),w:60,h:70,perLayer:10,tiers:3}))},
-  {group:'斜桿 φ48.6（100 支/捆，× 60 × 70 cm）',items:[['0.6x1.5',5.62,180],['0.9x1.5',5.98,205],['1.5x1.5',6.8,225],['1.8x1.5',7.32,250],['2.4x1.5',8.66,300]]
+  {group:'斜桿 φ48.6（100 支/捆，× 60 × 70 cm）',items:[['0.6x1.5',5.62,180],['0.9x1.0',4.8,165],['0.9x1.5',5.98,205],['1.2x1.5',6.31,215],['1.5x1.5',6.8,225],['1.8x1.5',7.32,250],['2.4x1.5',8.66,300]]
     .map(([m,u,l])=>({name:`斜桿 ${m}m`,pcs:100,unit:u,l,w:60,h:70,perLayer:10}))},
   {group:'蜂巢鋼 200×161mm（30 支/捆，長 × 110 × 100 cm）',items:[['0.6',13.36],['0.9',18.18],['1.2',22.98],['1.5',27.63],['1.8',32.78],['2.4',42.7]]
     .map(([m,u])=>({name:`蜂巢鋼 ${m}m`,pcs:30,unit:u,l:Math.round(m*100),w:110,h:100,perLayer:5}))},
@@ -802,17 +810,34 @@ function catInfo(){
   $('pcsWrap').hidden=$('qtyWrap').hidden=!!it.pallet;$('catTotUnit').textContent=it.pallet?(it.box?'箱':'板'):'支';
   catSplit();
 }
+// 品項＋尺寸分開選：上面選品項（主架、斜桿…），下面點尺寸按鈕；只有一種尺寸的就直接選好
+const famOf=it=>it.name.replace(/（.*$/,'').replace(/\s*[\d.]+(x[\d.]+)?m$/,'').trim();
+const sizeOf=it=>it.name.replace(/（.*$/,'').slice(famOf(it).length).trim().replace(/m$/,'')||it.name.replace(/（.*$/,'');
+const FAMS=[...new Set(CAT_ITEMS.map(famOf))];
+$('catFam').innerHTML=FAMS.map(f=>`<option>${esc(f)}</option>`).join('');
+function renderSizes(){
+  const f=$('catFam').value,list=CAT_ITEMS.filter(it=>famOf(it)===f),cur=+$('catSel').value;
+  $('catSizes').innerHTML=list.length<2?'':list.map(it=>{const i=CAT_ITEMS.indexOf(it);return `<button type="button" data-i="${i}" aria-pressed="${i===cur}">${esc(sizeOf(it))}</button>`}).join('');
+}
+function pickItem(i){$('catSel').value=i;$('catSel').dispatchEvent(new Event('change'));}
+$('catFam').addEventListener('change',()=>{const f=$('catFam').value,cur=CAT_ITEMS[+$('catSel').value];
+  if(famOf(cur)!==f)pickItem(CAT_ITEMS.findIndex(it=>famOf(it)===f));else renderSizes();});
+$('catSizes').addEventListener('click',e=>{const bt=e.target.closest('[data-i]');if(bt)pickItem(+bt.dataset.i);});
+$('catSel').addEventListener('change',()=>{$('catFam').value=famOf(CAT_ITEMS[+$('catSel').value]);renderSizes();});
 $('catSel').addEventListener('change',()=>{const b=CAT_ITEMS[+$('catSel').value];$('catPcs').value=b.pallet?'':b.pcs;
   if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*(b.pallet?1:b.pcs);catInfo();});
 $('catTotal').addEventListener('input',()=>{$('catQty').value='';catSplit();});
 $('catQty').addEventListener('input',()=>{const q=Math.max(0,Math.floor(+$('catQty').value||0));$('catTotal').value=q?q*curItem().pcs:'';catSplit();});
 $('catPcs').addEventListener('input',()=>{if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*curItem().pcs;catInfo();});
 $('catPcs').value=CAT_ITEMS[+$('catSel').value].pcs;
+$('catFam').value=famOf(CAT_ITEMS[+$('catSel').value]);renderSizes();
 // 零頭的尺寸：依支數算層數決定高度；TB 40 支以內只有一小捆（4 支寬，約 55 cm 寬，每層約 5.5 cm）
 function partialDims(it,pcs){
   if(it.tb&&pcs<=40)return {w:55,h:Math.max(20,Math.round(Math.ceil(pcs/4)*5.5))};
-  const layersFull=it.pcs/it.perLayer;
-  return {w:it.w,h:Math.max(15,Math.round(Math.ceil(pcs/it.perLayer)*it.h/layersFull))};
+  const layersFull=it.pcs/it.perLayer,per=it.perLayer;
+  // 不到一層時寬度也跟著變窄（例如蜂巢鋼 1 支 ≈ 22 寬、17 高）；高度照層數，不再有最少 15 cm
+  const across=Math.min(pcs,per),w=Math.max(5,Math.round(it.w*across/per));
+  return {w,h:Math.max(3,Math.round(Math.ceil(pcs/per)*it.h/layersFull))};
 }
 // 零頭：同一類（例如 Top Beam）的零頭，不同長度也可以綁成一捆，一捆不超過原本的支數（TB 80、其他 100）。
 // 長度取捆裡最長的那種；同一長度剛好湊滿一捆就變回一般整捆。
@@ -858,26 +883,34 @@ $('catAdd').onclick=()=>{
   $('catInfo').innerHTML=m?`<b class="bad">加入了，但目前有 ${m} 件裝不下</b>（看右邊上方的紅色提示）。`:'加入了，全部都裝得下。';
 };
 // ---------- 混綁：同一類不同長度綁成一捆（例如 TB 2.4m 40 支＋3.0m 40 支）----------
-let MIX=[];
+let MIX=[],MIXG=null;
 const mixLabel=()=>[...new Set(MIX.map(m=>famName(m.it)))].join('＋');
-function renderMix(){
-  $('mixBar').hidden=!MIX.length;if(!MIX.length)return;
-  const it0=MIX[0].it,tot=MIX.reduce((t,m)=>t+m.n,0);
-  $('mixList').innerHTML=`<b>混綁中（${mixLabel()}）</b>：${MIX.map(m=>`${m.it.name} × ${m.n} 支`).join('、')}　<span class="${tot>it0.pcs?'bad':'note'}">共 ${tot} 支${tot>it0.pcs?`，超過一捆 ${it0.pcs} 支`:`，一捆最多 ${it0.pcs} 支`}</span>`;
+// 混綁（簡單版）：按「混綁一捆…」→ 列出可以一起綁的長度，每個長度直接填支數 → 加入清單
+function mixRead(){MIX=[...document.querySelectorAll('#mixList input')].map(i=>({it:CAT_ITEMS[+i.dataset.i],n:Math.max(0,Math.floor(+i.value||0))})).filter(m=>m.n>0);}
+function mixSum(){
+  mixRead();const tot=MIX.reduce((t,m)=>t+m.n,0),cap=MIX.length?MIX.slice().sort((a,b)=>b.it.l-a.it.l)[0].it.pcs:0;
+  $('mixSum').innerHTML=!tot?'<span class="note">在要綁的長度填支數（不綁的空白）。</span>':tot>cap?`<b class="bad">共 ${tot} 支，超過一捆最多 ${cap} 支</b>`:`一捆共 <b>${tot}</b> 支（最多 ${cap} 支）・長度照最長的・約 ${fmt(MIX.reduce((t,m)=>t+m.it.unit*m.n,0))} kg`;
+  $('mixDone').disabled=!tot||tot>cap;
 }
+function openMix(it){
+  MIXG=it.mixg;const list=CAT_ITEMS.filter(x=>!x.pallet&&!x.per&&x.mixg===it.mixg);
+  const pre=Math.floor(+$('catTotal').value||0),cur=CAT_ITEMS[+$('catSel').value];
+  $('mixList').innerHTML=`<b>混綁一捆：${[...new Set(list.map(famName))].join('＋')}</b>`+
+    `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:4px 10px;margin-top:4px">`+
+    list.map(x=>`<label class="row" style="gap:4px;flex-wrap:nowrap"><span style="flex:1;min-width:0">${esc(x.name)}</span><input type="number" min="0" step="1" data-i="${CAT_ITEMS.indexOf(x)}" style="width:64px" value="${x===cur&&pre>0?pre:''}"> 支</label>`).join('')+`</div>`;
+  $('mixBar').hidden=false;mixSum();
+  const f=$('mixList').querySelector('input');if(f)f.focus();
+}
+function renderMix(){$('mixBar').hidden=true;$('mixList').innerHTML='';MIX=[];MIXG=null;}
+$('mixList').addEventListener('input',mixSum);
 $('mixAdd').onclick=()=>{
-  const it=curItem(),n=Math.max(0,Math.floor(+$('catTotal').value||0));
-  if(it.pallet){$('catInfo').textContent='棧板不能混綁。';return}
-  if(!n){$('catInfo').textContent='先在「總共」填這個長度要綁幾支，再按「放進混綁」。';return}
-  if(MIX.length&&MIX[0].it.mixg!==it.mixg){$('catInfo').textContent=`這個不能跟目前的綁在一起（可以混綁的：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5、同一種 Top Beam）。`;return}
-  const tot=MIX.reduce((t,m)=>t+m.n,0)+n,cap=MIX.length?MIX[0].it.pcs:it.pcs;
-  if(tot>cap){$('catInfo').innerHTML=`<b class="bad">一捆最多 ${cap} 支</b>，現在會變成 ${tot} 支。`;return}
-  const same=MIX.find(m=>m.it.name===it.name);if(same)same.n+=n;else MIX.push({it,n});
-  $('catTotal').value='';$('catQty').value='';catSplit();$('catInfo').textContent='已放進混綁，可以再選別的長度繼續加。';renderMix();
+  const it=curItem();
+  if(it.pallet||it.per){$('catInfo').textContent='棧板、木箱、調整座不能混綁。';return}
+  openMix(it);$('catInfo').textContent='';
 };
-$('mixClear').onclick=()=>{MIX=[];renderMix();};
+$('mixClear').onclick=()=>renderMix();
 $('mixDone').onclick=()=>{
-  if(!MIX.length)return;
+  mixRead();if(!MIX.length)return;
   const it0=MIX.slice().sort((a,b)=>b.it.l-a.it.l)[0].it,tot=MIX.reduce((t,m)=>t+m.n,0);
   const d=tot===it0.pcs?{w:it0.w,h:it0.h}:partialDims(it0,tot),q=Math.max(1,Math.floor(+$('mixQty').value||1));
   cargo.push({name:`${mixLabel()} 混綁（${MIX.map(m=>MIX.every(x=>x.it.fam===m.it.fam)?m.it.name.slice(famName(m.it).length).trim()+'×'+m.n:m.it.name+'×'+m.n).join('、')}，共${tot}支）`,
@@ -1087,10 +1120,21 @@ function updUndo(){if(!$('undoMove')||!result)return;const h=(result.hist||[]).l
   $('moveMsg').textContent=h?`已手動移動 ${h} 次`:'';}
 $('undoMove').onclick=()=>{const st=result.hist.pop();if(st)restore(st);};
 $('resetMoves').onclick=()=>{if(!result.orig)return;result.hist=[];restore(result.orig);$('moveMsg').textContent='已回到原本的排法';};
+// 把視角中心慢慢移到這件貨物（鏡頭一起平移，轉動角度不變），邊邊的貨也能繞著它轉
+let focusAnim=null;
+function focusOn(b){
+  if(!controls)return;const C=CONTAINERS[cont];
+  const to=new THREE.Vector3(-C.L/2+b.x+b.l/2,b.z+b.h/2,-C.W/2+b.y+b.w/2),from=controls.target.clone(),cam0=camera.position.clone();
+  if(from.distanceTo(to)<1)return;
+  cancelAnimationFrame(focusAnim);const t0=performance.now();
+  const step=()=>{const k=Math.min(1,(performance.now()-t0)/350),e=k*(2-k),d=to.clone().sub(from).multiplyScalar(e);
+    controls.target.copy(from).add(d);camera.position.copy(cam0).add(d);controls.update();if(k<1)focusAnim=requestAnimationFrame(step);};
+  step();
+}
 function select(i){
   SEL=i;document.querySelectorAll('#seqBody tr').forEach(tr=>tr.classList.toggle('sel',+tr.dataset.i===i));
   if(selMesh&&result.placed[i]){const C=CONTAINERS[cont],b=result.placed[i];
-    selMesh.scale.set(b.l+6,b.h+6,b.w+6);selMesh.position.set(-C.L/2+b.x+b.l/2,b.z+b.h/2,-C.W/2+b.y+b.w/2);selMesh.visible=true;}
+    focusOn(b);selMesh.scale.set(b.l+6,b.h+6,b.w+6);selMesh.position.set(-C.L/2+b.x+b.l/2,b.z+b.h/2,-C.W/2+b.y+b.w/2);selMesh.visible=true;}
   else if(selMesh)selMesh.visible=false;
   const b=result&&result.placed[i],ctl=$('selCtl');ctl.hidden=!b;$('stageHint').hidden=!!b;
   if(b){const P=posInfo()[i];$('selName').innerHTML=`<span class="sw" style="background:${COLORS[b.row%COLORS.length]}"></span> 第 ${i+1} 件・${esc(cargo[b.row].name)}<br><b>第 ${P.row} 排・${P.side}・第 ${P.layer} 層</b>`;
@@ -1202,9 +1246,14 @@ function init3d(){
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(40,1,1,20000);
   controls=new THREE.OrbitControls(camera,renderer.domElement);controls.enableDamping=true;
+  // 看邊邊的貨：右鍵（或兩指）拖曳可以平移；滾輪拉近；不會轉到地板下面
+  controls.screenSpacePanning=true;controls.minDistance=40;controls.maxDistance=6000;controls.maxPolarAngle=Math.PI*0.495;
+  controls.keyPanSpeed=0;
   // 點 3D 裡的貨物 → 選到表格裡那一列（拖曳旋轉時不算點）
   let down=null;const ray=new THREE.Raycaster(),ptr=new THREE.Vector2();
   renderer.domElement.addEventListener('pointerdown',e=>{down=[e.clientX,e.clientY]});
+  renderer.domElement.addEventListener('dblclick',e=>{const r=renderer.domElement.getBoundingClientRect();ptr.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
+    ray.setFromCamera(ptr,camera);if(!ray.intersectObjects(boxMeshes.filter(m=>m.visible),true).length){select(-1);resetView();}});
   renderer.domElement.addEventListener('pointerup',e=>{
     if(!down||Math.hypot(e.clientX-down[0],e.clientY-down[1])>5)return;
     const r=renderer.domElement.getBoundingClientRect();ptr.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);
@@ -1428,25 +1477,60 @@ function stdLong(lenCm,n,key,each){
     }
   });
 }
+// 這一捆裡每一支的長度（cm）與是不是主架（有連接棒）：從品名讀「零頭 37支」「共 94 支」「主架 1.5m×30、平主架 3.0m×40」「（100支/捆）」
+function stdPieces(name,len,cap){
+  const parts=[];
+  const re=/(平主架|主架|主桿|立桿)?\s*([\d.]+)m\s*×\s*(\d+)/g;let m,fam=/平主架/.test(name)?'平主架':'主架';
+  while((m=re.exec(name))){if(m[1])fam=m[1];parts.push({flat:/平/.test(fam),m:+m[2],n:+m[3]});}
+  if(!parts.length){
+    const n=+((name.match(/零頭\s*(\d+)\s*支/)||name.match(/共\s*(\d+)\s*支/)||name.match(/（(\d+)支\/捆）/)||[])[1]||cap);
+    const mm=+((name.match(/([\d.]+)\s*m/)||[])[1]||0);
+    parts.push({flat:/平主架/.test(name),m:mm||Math.max(0.5,(len-25)/100),n});
+  }
+  const out=[];parts.forEach(p=>{for(let i=0;i<p.n;i++)out.push({rod:p.m*100,flat:p.flat})});
+  return out.sort((a,b)=>b.rod-a.rod);   // 長的放下面，短的疊上面（像疊積木）
+}
+// 主架／平主架捆（一支一支畫）：鍍鋅圓管、每 50 cm 一個圓盤，主架一端多一截細的連接棒；
+// 一層約 10 支寬，最上面那層沒滿就靠一邊放；兩側直立木板加黑色鋼帶，底下墊枕木（依主桿照片）
 function stdGroup(b,col,idx){
   const g=new THREE.Group();
   const alongX=b.l>=b.w,len=alongX?b.l:b.w,wid=alongX?b.w:b.l;
-  const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
-  const mat=t=>new THREE.MeshLambertMaterial({map:t,color:tint});
   const sleeper=Math.min(5,b.h*0.06),bh=b.h-sleeper;
-  // 圓盤：照桿子長度每 50 cm 一個（1.0m = 2 個、1.5m = 3 個、3.0m = 6 個），不是照一捆的長度
-  const rodM=+((cargo[b.row].name.match(/([\d.]+)\s*m/)||[])[1]||0),discN=Math.max(1,Math.round(rodM>0?rodM/0.5:len/50));
-  const end=mat(stdEnd(10,10)),side=mat(stdLong(len,10,'s',len/discN)),top=mat(stdLong(len,10,'t',len/discN));
-  const body=new THREE.Mesh(new THREE.BoxGeometry(len-2,bh,wid-3),[end,end,top,top,side,side]);
-  body.position.y=sleeper+bh/2;g.add(body);
+  const cols=Math.max(1,Math.round(wid/11.5)),cap=cols*Math.max(1,Math.round(bh/9.5));
+  const pcs=stdPieces(cargo[b.row].name,len,cap),n=pcs.length,layers=Math.max(1,Math.ceil(n/cols));
+  const sx=wid/cols,sy=bh/layers,r=Math.min(3.0,sx*0.27,sy*0.3),rd=Math.min(5.6,sx*0.49,sy*0.5),rc=r*0.75;
+  const cyl=(rad,h,seg=12)=>{const q=new THREE.CylinderGeometry(rad,rad,h,seg);q.rotateZ(Math.PI/2);return q};
+  const unit=cyl(1,1);   // 每支長度不同：用同一個單位圓柱，靠縮放變長短粗細
+  const steel=new THREE.MeshLambertMaterial({color:'#c3cbd0'});
+  const totalDiscs=pcs.reduce((t,p)=>t+Math.max(1,Math.round(p.rod/50)),0),conns=pcs.filter(p=>!p.flat).length;
+  const tubes=new THREE.InstancedMesh(unit,steel,n);
+  const discs=new THREE.InstancedMesh(cyl(rd,2.2,20),new THREE.MeshLambertMaterial({color:'#9aa4ab'}),totalDiscs);   // 圓盤：比管子大一圈、稍微厚一點，遠看也看得出來
+  const connM=new THREE.InstancedMesh(unit,new THREE.MeshLambertMaterial({color:'#a9b2b8'}),Math.max(1,conns));
+  const holes=new THREE.InstancedMesh(cyl(r*0.8,0.3,12),new THREE.MeshLambertMaterial({color:'#2a3036'}),2*n);
+  const labs=new THREE.InstancedMesh(cyl(r*1.05,7,12),new THREE.MeshLambertMaterial({color:'#f06a1e'}),n);   // 橘色貼紙：靠沒有連接棒的那一頭（依照片）
+  const m=new THREE.Matrix4(),q=new THREE.Quaternion(),v=new THREE.Vector3(),sc=new THREE.Vector3();
+  const put=(mesh,i,x,y,z,lx,rr)=>{v.set(x,y,z);sc.set(lx,rr,rr);m.compose(v,q,sc);mesh.setMatrixAt(i,m);};
+  let d=0,c=0;
+  pcs.forEach((p,k)=>{
+    const j=Math.floor(k/cols),i=k%cols,y=sleeper+sy*(j+0.5),z=-wid/2+sx*(i+0.5);
+    const conn=p.flat?0:Math.min(25,Math.max(0,len-p.rod-1)),body=Math.min(p.rod,len-conn-1);
+    const tubeX=-len/2+0.5+conn;   // 連接棒一律在同一邊（使用者確認），管子接在後面
+    put(tubes,k,tubeX+body/2,y,z,body,r);
+    if(conn)put(connM,c++,tubeX-conn/2,y,z,conn,rc);
+    m.makeTranslation(tubeX+body-Math.min(9,body*0.12),y,z);labs.setMatrixAt(k,m);
+    const dn=Math.max(1,Math.round(p.rod/50));
+    for(let t=0;t<dn;t++){m.makeTranslation(tubeX+body*(t+0.5)/dn,y,z);discs.setMatrixAt(d++,m);}
+    m.makeTranslation(tubeX-0.1,y,z);holes.setMatrixAt(2*k,m);m.makeTranslation(tubeX+body+0.1,y,z);holes.setMatrixAt(2*k+1,m);   // 管口
+  });
+  connM.count=c;
+  [tubes,discs,connM,holes,labs].forEach(o=>{o.instanceMatrix.needsUpdate=true;g.add(o)});
   const woodM=new THREE.MeshLambertMaterial({color:'#c9965a'}),strapM=new THREE.MeshLambertMaterial({color:'#1c2126'});
   [-0.28,0.28].forEach(p=>{
     const x=len*p;
     const sl=new THREE.Mesh(new THREE.BoxGeometry(9,sleeper,wid),woodM);sl.position.set(x,sleeper/2,0);g.add(sl);   // 枕木
-    [-1,1].forEach(sd=>{                                                                                           // 兩側直立木板
-      const bd=new THREE.Mesh(new THREE.BoxGeometry(9,bh,1.5),woodM);bd.position.set(x,sleeper+bh/2,sd*(wid/2-0.7));g.add(bd);
-    });
-    const st=new THREE.Mesh(new THREE.BoxGeometry(2.5,bh+0.6,wid+0.6),strapM);st.position.set(x,sleeper+bh/2,0);g.add(st); // 鋼帶
+    [-1,1].forEach(sd=>{const bd=new THREE.Mesh(new THREE.BoxGeometry(9,bh,1.5),woodM);bd.position.set(x,sleeper+bh/2,sd*(wid/2+0.8));g.add(bd);});   // 兩側直立木板
+    [[sleeper+bh+0.2,0.4,wid+3.4,0],[sleeper-0.2,0.4,wid+3.4,0],[sleeper+bh/2,bh+0.8,0.4,-1],[sleeper+bh/2,bh+0.8,0.4,1]].forEach(([yy,h,w,sd])=>{
+      const st=new THREE.Mesh(new THREE.BoxGeometry(2.4,h,w),strapM);st.position.set(x+5,yy,sd?sd*(wid/2+1.7):0);g.add(st);});   // 鋼帶繞一圈
   });
   if(!alongX)g.rotation.y=Math.PI/2;
   return g;
@@ -1573,7 +1657,7 @@ function ledgerGroup(b,col,idx){
 // 蜂巢鋼捆（依照片）：口字形鍍鋅鐵管，每支上下面一排大圓孔、側面小孔；一捆約 5 支寬 × 6 層，鋼帶綁
 const isHoney=n=>/蜂巢鋼/.test(n)&&!isPallet(n);
 function honeyMaterials(b,col){
-  const alongX=b.l>=b.w,len=alongX?b.l:b.w,cols=5,rows=6;
+  const alongX=b.l>=b.w,len=alongX?b.l:b.w,cols=Math.max(1,Math.round((alongX?b.w:b.l)/22)),rows=Math.max(1,Math.round(b.h/16.5));   // 一支約 22 寬、16.5 高（含包裝），照這捆實際大小算幾支幾層
   const tint=new THREE.Color('#ffffff').lerp(new THREE.Color(col),0.1);
   const holes=Math.max(2,Math.round(len/15));   // 大圓孔每 15 cm 一個（0.3m = 2 個、0.6m = 4 個）
   // 貼圖的長寬照實際公分等比例畫（每公分 k 像素），圓孔才會是正圓，不會被拉成橢圓
@@ -1587,8 +1671,13 @@ function honeyMaterials(b,col){
     for(let r=0;r<rows;r++){const y=r*sh;g.fillStyle=r%2?'#c2cad0':'#d2d8dc';g.fillRect(0,y,w,sh);g.fillStyle='#7f8a92';g.fillRect(0,y+sh-0.5,w,0.5);
       for(let q=0;q<holes;q++){g.fillStyle='#4a535a';g.beginPath();g.arc((q+0.5)*p,y+sh/2,1,0,7);g.fill();}}
     g.fillStyle='#1c2126';[0.25,0.75].forEach(q=>g.fillRect(w*q-1,0,2,h));});
-  const end=canvasTex('hEnd',cols*48,rows*40,(g,w,h)=>{g.fillStyle='#5a646b';g.fillRect(0,0,w,h);const cw=w/cols,rh=h/rows;
-    for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){g.fillStyle='#cfd6da';g.fillRect(i*cw+1,j*rh+1,cw-2,rh-2);g.fillStyle='#2f363c';g.fillRect(i*cw+5,j*rh+5,cw-10,rh-10);}});
+  // 端板（依照片）：圓角方板、中間一個大圓孔、四周小孔，捆起來每片之間有縫
+  const end=canvasTex(`hEnd2-${cols}-${rows}`,cols*100,rows*80,(g,w,h)=>{g.fillStyle='#4b545b';g.fillRect(0,0,w,h);const cw=w/cols,rh=h/rows;
+    const rr=(x,y,ww,hh,r)=>{g.beginPath();g.moveTo(x+r,y);g.arcTo(x+ww,y,x+ww,y+hh,r);g.arcTo(x+ww,y+hh,x,y+hh,r);g.arcTo(x,y+hh,x,y,r);g.arcTo(x,y,x+ww,y,r);g.closePath();};
+    for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){const x=i*cw+3,y=j*rh+3,ww=cw-6,hh=rh-6,cx=x+ww/2,cy=y+hh/2;
+      rr(x,y,ww,hh,Math.min(ww,hh)*0.16);g.fillStyle='#d3d9dd';g.fill();
+      g.fillStyle='#2f363c';g.beginPath();g.arc(cx,cy,hh*0.2,0,7);g.fill();
+      [[-.36,-.3],[.36,-.3],[-.36,.3],[.36,.3],[-.36,0],[.36,0]].forEach(([dx,dy])=>{g.beginPath();g.arc(cx+dx*ww,cy+dy*hh,hh*0.05,0,7);g.fill();});}});
   const m=t=>new THREE.MeshLambertMaterial({map:t,color:tint});
   const e=m(end),t=m(top),sd=m(side);
   return alongX?[e,e,t,t,sd,sd]:[sd,sd,t,t,e,e];
