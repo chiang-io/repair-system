@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16354d">
+<title>庫存查詢</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#e9edf0; --surface:#ffffff; --sunk:#f3f5f7; --ink:#14212b; --muted:#5a6a76; --line:#cfd7dd;
+  --accent:#f2a900; --accent-ink:#1a1400; --steel:#1f5f8b; --good:#1d7a4c; --warn:#a85b00; --bad:#b3261e;
+  --hl:#fff1c2; --bar:#16354d; --bar-ink:#ffffff;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e161c; --surface:#16212a; --sunk:#111b22; --ink:#e2e9ee; --muted:#8fa0ad; --line:#2a3a46;
+  --accent:#f5b81f; --accent-ink:#1a1400; --steel:#6fa8d6; --good:#4fc48a; --warn:#f0a040; --bad:#f2786f;
+  --hl:#3d3418; --bar:#0b1d2a; --bar-ink:#e2e9ee; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e161c; --surface:#16212a; --sunk:#111b22; --ink:#e2e9ee; --muted:#8fa0ad; --line:#2a3a46;
+  --accent:#f5b81f; --accent-ink:#1a1400; --steel:#6fa8d6; --good:#4fc48a; --warn:#f0a040; --bad:#f2786f;
+  --hl:#3d3418; --bar:#0b1d2a; --bar-ink:#e2e9ee; color-scheme:dark }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Noto Sans TC",system-ui,sans-serif;
+  padding-bottom:env(safe-area-inset-bottom,0px)}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.wrap{max-width:760px;margin:0 auto;padding:0 16px}
+
+/* top bar */
+header{background:var(--bar);color:var(--bar-ink);padding-top:env(safe-area-inset-top,0px)}
+header .wrap{display:flex;align-items:center;gap:12px;min-height:56px}
+header h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.04em}
+header .date{margin-left:auto;font-size:13px;opacity:.85;text-align:right;line-height:1.3}
+header .date b{display:block;font-size:14px;opacity:1}
+
+/* sticky search area */
+.sticky{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 0 8px;border-bottom:1px solid var(--line)}
+.search{display:flex;gap:8px}
+.search input{flex:1;min-width:0;height:52px;border:2px solid var(--line);border-radius:12px;background:var(--surface);
+  padding:0 14px;font-size:18px}
+.search input:focus{outline:none;border-color:var(--steel)}
+.search .clear{width:52px;border:2px solid var(--line);border-radius:12px;background:var(--surface);font-size:20px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.chip{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:14px;line-height:1.3}
+.chip[aria-pressed="true"]{background:var(--steel);border-color:var(--steel);color:#fff}
+.tabs{display:flex;gap:6px;margin-top:10px}
+.tab{flex:1;border:none;border-radius:10px;padding:9px;background:var(--sunk);font-weight:500;font-size:15px}
+.tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+
+/* banners */
+.banner{border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px;border:1px solid var(--line);background:var(--surface)}
+.banner.warn{border-color:var(--warn);background:var(--hl)}
+.banner.bad{border-color:var(--bad)}
+.banner b{font-weight:700}
+
+/* result cards */
+.meta{color:var(--muted);font-size:13px;margin:10px 2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:10px 0}
+.card .name{font-size:17px;font-weight:700;line-height:1.35;word-break:break-word}
+.card .code{display:flex;align-items:center;gap:8px;margin-top:2px;color:var(--steel);font-size:15px;font-weight:600;word-break:break-all}
+.card .wt{color:var(--muted);font-size:13px;flex:1}
+.stock{margin-top:8px;border-top:1px dashed var(--line);padding-top:6px}
+.srow{display:flex;align-items:center;gap:10px;padding:5px 0}
+.wh{font-size:14px;min-width:0;flex:1}
+.wh .no{display:inline-block;min-width:30px;text-align:center;border-radius:6px;background:var(--sunk);padding:0 6px;margin-right:6px;font-weight:700}
+.wh.main .no{background:var(--steel);color:#fff}
+.qty{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.qty.neg{color:var(--bad)}
+.qty.zero{color:var(--muted)}
+.qty small{font-size:12px;font-weight:400;color:var(--muted);margin-left:2px}
+.add{border:1.5px solid var(--steel);color:var(--steel);background:transparent;border-radius:8px;padding:3px 10px;font-size:14px;white-space:nowrap}
+.add.on{background:var(--good);border-color:var(--good);color:#fff}
+.negnote{font-size:12px;color:var(--bad)}
+mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
+.more{width:100%;border:1.5px dashed var(--steel);background:transparent;color:var(--steel);border-radius:12px;padding:10px;margin:6px 0 10px;font-size:15px}
+
+/* pick list */
+.pick{display:flex;gap:10px;align-items:flex-start}
+.pick input[type=checkbox]{width:26px;height:26px;margin-top:2px;flex:none;accent-color:var(--good)}
+.pick .body{flex:1;min-width:0}
+.pick.done .name{text-decoration:line-through;color:var(--muted)}
+.pick .need{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:14px;flex-wrap:wrap}
+.pick .need input{width:90px;height:36px;border:1.5px solid var(--line);border-radius:8px;background:var(--sunk);padding:0 8px;font-size:16px}
+.pick .del{border:none;background:none;color:var(--muted);font-size:22px;line-height:1;padding:0 4px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.btn{border:none;border-radius:10px;padding:10px 16px;background:var(--steel);color:#fff;font-weight:500}
+.btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);font-weight:700}
+
+/* empty / import */
+.empty{text-align:center;padding:28px 8px}
+.empty h2{font-size:20px;margin:6px 0 8px}
+.empty p{color:var(--muted);margin:6px 0}
+.steps{text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 16px 12px 34px;margin:16px auto;max-width:460px}
+.steps li{margin:4px 0}
+.big{font-size:18px;padding:14px 22px;border-radius:12px}
+footer{color:var(--muted);font-size:13px;padding:20px 0 32px;border-top:1px solid var(--line);margin-top:24px}
+footer a{color:var(--steel)}
+footer .row{margin:8px 0}
+footer .row.btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>庫存查詢</h1>
+  <div class="date" id="dateBox" hidden></div>
+</div></header>
+
+<main class="wrap">
+  <section id="emptyView" class="empty" hidden>
+    <h2>先匯入庫存報表</h2>
+    <p>匯入一次就會存在這支手機裡，沒有網路也能查。</p>
+    <ol class="steps">
+      <li>在 ERP 印出「存貨異動統計表-分倉」，存成 <b>PDF</b>（或匯出 Excel）。</li>
+      <li>把檔案傳到手機（LINE、Email 都可以）。</li>
+      <li>按下面的按鈕選那個檔案。</li>
+    </ol>
+    <button class="btn primary big" data-import>選擇報表檔案</button>
+    <p style="font-size:13px;margin-top:14px">資料只存在這個瀏覽器，不會上傳到任何地方。</p>
+  </section>
+
+  <section id="mainView" hidden>
+    <div class="sticky">
+      <div class="search">
+        <input id="q" type="text" inputmode="search" autocomplete="off" enterkeyhint="search"
+          placeholder="打品名或編號，例如：斜桿 1.8">
+        <button class="clear" id="clearQ" aria-label="清除">×</button>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tabSearch" aria-selected="true">查詢</button>
+        <button class="tab" role="tab" id="tabPick" aria-selected="false">備料清單 <span id="pickCount"></span></button>
+      </div>
+    </div>
+    <div id="staleBox"></div>
+    <div id="searchView"></div>
+    <div id="pickView" hidden></div>
+  </section>
+
+  <footer>
+    <div class="row btns" id="footImport">
+      <button class="btn ghost" data-import>匯入新報表</button>
+      <span id="fileInfo"></span>
+    </div>
+    <div class="row">數量來自匯入的報表，<b>不是即時庫存</b>。負數表示帳上數量不對，請以現場為準。</div>
+    <div class="row"><a href="../">← 貨櫃裝箱模擬</a></div>
+  </footer>
+</main>
+<input type="file" id="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" hidden>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+'use strict';
+const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+const MAIN_WH = ['02', '06'];          // 倉管常用：02 新品倉、06 五金倉
+const PAGE = 60;                        // 一次顯示幾張卡片
+const $ = id => document.getElementById(id);
+
+/* ---------- 儲存（只在這個瀏覽器） ---------- */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+};
+let data = store.get('inv-data', null);     // {date, dateSource, file, importedAt, wh:{code:name}, rows:[[wh,code,name,qty,wt]]}
+let pick = store.get('inv-pick', []);       // [{code, name, need, done}]
+let whSel = store.get('inv-wh', null);      // 選了哪些倉；null = 預設
+let shown = PAGE;
+
+/* ---------- 工具 ---------- */
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 2600);
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// 搜尋用：全形轉半形、大小寫、×→x、去空白
+const norm = s => String(s).normalize('NFKC').toLowerCase().replace(/[×*＊]/g, 'x').replace(/[Φø]/g, 'φ').replace(/\s+/g, '');
+const fmt = n => n == null ? '' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+function loadScript(src) {
+  return new Promise((ok, fail) => {
+    if (document.querySelector(`script[src="${src}"]`)) return ok();
+    const s = document.createElement('script'); s.src = src; s.onload = ok;
+    s.onerror = () => fail(new Error('載入失敗：' + src)); document.head.appendChild(s);
+  });
+}
+function daysAgo(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + 'T00:00:00'); const now = new Date(); now.setHours(0, 0, 0, 0);
+  return Math.round((now - d) / 86400000);
+}
+
+/* ---------- 解析：PDF（存貨異動統計表-分倉） ---------- */
+// 一頁的文字依 y 座標分行，每行依 x 排序。
+// 每行第一段是產品編號；右邊的數字依位置分成「結存數量」與「單重」；其餘是品名規格。
+function parseReportPages(pages) {
+  const rows = [], whNames = {}; let wh = null, date = null, cols = null, skipped = 0;
+  for (const items of pages) {
+    const lines = [];
+    for (const it of items) {
+      if (!it.str.trim()) continue;
+      let L = lines.find(l => Math.abs(l.y - it.y) <= 2);
+      if (!L) { L = { y: it.y, items: [] }; lines.push(L); }
+      L.items.push(it);
+    }
+    lines.sort((a, b) => b.y - a.y); lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
+    let inBody = false;
+    for (const l of lines) {
+      const text = l.items.map(i => i.str).join(' ').replace(/\s+/g, ' ');
+      let m;
+      if ((m = text.match(/列印日期\s*[:：]\s*(\d{4})\/(\d{1,2})\/(\d{1,2})/)))
+        date = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+      if ((m = text.match(/倉庫名稱\s*[:：]\s*(.+?)\s*[(（]\s*([0-9A-Za-z]+)\s*[)）]/))) {
+        wh = m[2]; whNames[wh] = m[1].trim(); continue;
+      }
+      if (/產品編號/.test(text) && /品名/.test(text)) {
+        const f = re => l.items.find(i => re.test(i.str));
+        const q = f(/結存|數量/), w = f(/單重/);
+        cols = { qtyX: q ? q.x : 430, wtX: w ? w.x : 510 }; inBody = true; continue;
+      }
+      if (!inBody || !cols || /合\s*計|總\s*計/.test(text)) continue;
+      const first = l.items[0];
+      if (!/^[A-Za-z0-9]/.test(first.str.trim())) { skipped++; continue; }
+      let qty = null, wt = null, name = '', prevEnd = null;
+      for (const it of l.items.slice(1)) {
+        const s = it.str.trim(), right = it.x + it.w;
+        if (/^-?[\d,]+(\.\d+)?$/.test(s) && right > cols.qtyX) {
+          const v = parseFloat(s.replace(/,/g, ''));
+          if (right > cols.wtX) wt = v; else qty = v;
+        } else {
+          // 兩段字之間有明顯空隙才補空白（pdf.js 會把中英文切成好幾段）
+          name += (prevEnd != null && it.x - prevEnd > 3 ? ' ' : '') + s;
+          prevEnd = right;
+        }
+      }
+      if (qty === null) { skipped++; continue; }
+      rows.push([wh || '?', first.str.trim(), name.replace(/\s+/g, ' ').trim(), qty, wt]);
+    }
+  }
+  return { rows, whNames, date, skipped };
+}
+async function readPdf(buf) {
+  await loadScript(PDFJS);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pages = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    pages.push(tc.items.map(i => ({ str: i.str, x: i.transform[4], y: i.transform[5], w: i.width })));
+  }
+  return parseReportPages(pages);
+}
+
+/* ---------- 解析：Excel／CSV ---------- */
+// 找標題列（有「編號」和「品名」的那一列）決定欄位；
+// 支援報表式（「倉庫名稱:新品倉 (02)」分段）與表格式（有「倉別」欄）。
+function parseSheetRows(allRows) {
+  const rows = [], whNames = {}; let wh = null, date = null, col = null, skipped = 0;
+  const find = (cells, re) => cells.findIndex(c => re.test(String(c).replace(/\s+/g, '')));
+  for (const raw of allRows) {
+    const cells = raw.map(c => c == null ? '' : String(c).trim());
+    const text = cells.join(' ');
+    if (!text.trim()) continue;
+    let m;
+    if ((m = text.match(/列印日期\s*[:：]?\s*(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/)))
+      date = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    if ((m = text.match(/倉庫名稱\s*[:：]?\s*(.+?)\s*[(（]\s*([0-9A-Za-z]+)\s*[)）]/))) {
+      wh = m[2]; whNames[wh] = m[1].trim(); continue;
+    }
+    const iCode = find(cells, /^(產品編號|產品代號|料號|品號|編號)$/), iName = find(cells, /品名/);
+    if (iCode >= 0 && iName >= 0) {
+      col = {
+        code: iCode, name: iName,
+        spec: find(cells, /^規格$/),
+        qty: find(cells, /結存|庫存數|現有|數量/),
+        wt: find(cells, /單重/),
+        wh: find(cells, /^(倉別|倉庫|倉庫代號|倉庫名稱)$/),
+      };
+      continue;
+    }
+    if (!col || /合\s*計|總\s*計/.test(text)) continue;
+    const code = cells[col.code];
+    if (!code || !/^[A-Za-z0-9]/.test(code)) { skipped++; continue; }
+    const num = v => { const n = parseFloat(String(v).replace(/,/g, '')); return isNaN(n) ? null : n; };
+    const qty = col.qty >= 0 ? num(cells[col.qty]) : null;
+    if (qty === null) { skipped++; continue; }
+    let w = wh;
+    if (col.wh >= 0 && cells[col.wh]) {
+      const v = cells[col.wh], mm = v.match(/\d+/);
+      w = mm ? mm[0].padStart(2, '0') : v;
+      const nm = v.replace(/[(（]?\s*\d+\s*[)）]?/, '').trim();
+      if (nm && !whNames[w]) whNames[w] = nm;
+    }
+    const name = [cells[col.name], col.spec >= 0 ? cells[col.spec] : ''].filter(Boolean).join(' ');
+    rows.push([w || '?', code, name, qty, col.wt >= 0 ? num(cells[col.wt]) : null]);
+  }
+  return { rows, whNames, date, skipped };
+}
+async function readSheet(buf) {
+  await loadScript(XLSX_URL);
+  const wb = XLSX.read(buf, { type: 'array' });
+  let all = [];
+  for (const n of wb.SheetNames) all = all.concat(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }));
+  return parseSheetRows(all);
+}
+
+/* ---------- 匯入 ---------- */
+document.querySelectorAll('[data-import]').forEach(b => b.onclick = () => $('file').click());
+$('file').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  toast('讀取中…');
+  try {
+    const buf = new Uint8Array(await f.arrayBuffer());
+    const isPdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
+    const r = isPdf ? await readPdf(buf) : await readSheet(buf);
+    if (!r.rows.length) {
+      alert('這個檔案裡找不到庫存資料。\n\n請確認是「存貨異動統計表-分倉」，而且要有「產品編號」「品名」「結存數量」這幾欄。');
+      return;
+    }
+    const fileDate = new Date(f.lastModified || Date.now());
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const next = {
+      date: r.date || iso(fileDate), dateSource: r.date ? '列印日期' : '檔案日期',
+      file: f.name, importedAt: iso(new Date()), wh: r.whNames, rows: r.rows,
+    };
+    const counts = {}; r.rows.forEach(x => counts[x[0]] = (counts[x[0]] || 0) + 1);
+    const summary = Object.keys(counts).sort().map(k => `${k} ${r.whNames[k] || ''}：${counts[k]} 筆`).join('\n');
+    if (!confirm(`讀到 ${r.rows.length} 筆（資料日期 ${next.date}）\n\n${summary}${r.skipped ? `\n\n有 ${r.skipped} 行看不懂，已略過。` : ''}\n\n要用這份取代目前的資料嗎？`)) return;
+    data = next;
+    if (!store.set('inv-data', data)) alert('這個瀏覽器不能儲存（例如無痕模式），這次可以查，但關掉後要重新匯入。');
+    shown = PAGE; render(); toast('匯入完成');
+  } catch (err) {
+    console.error(err);
+    alert('讀取失敗：' + err.message + '\n\n第一次匯入需要網路（要下載讀檔工具）。');
+  }
+};
+
+/* ---------- 畫面 ---------- */
+function whList() {
+  const s = new Set(data.rows.map(r => r[0]));
+  return [...s].sort((a, b) => (MAIN_WH.includes(b) - MAIN_WH.includes(a)) || a.localeCompare(b));
+}
+function selectedWh() {
+  const all = whList();
+  const sel = (whSel || MAIN_WH).filter(w => all.includes(w));
+  return sel.length ? sel : all;
+}
+function whLabel(w) { return (data.wh && data.wh[w]) || ''; }
+
+function renderHeader() {
+  const box = $('dateBox');
+  if (!data) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<b>${esc(data.date)}</b>${esc(data.dateSource)}`;
+  $('fileInfo').textContent = `目前：${data.file}（${data.rows.length} 筆，${data.importedAt} 匯入）`;
+  const d = daysAgo(data.date);
+  $('staleBox').innerHTML = d != null && d >= 7
+    ? `<div class="banner warn"><b>資料是 ${d} 天前的。</b>數量可能已經變了，有空請匯入新的報表。</div>` : '';
+}
+function renderChips() {
+  const all = whList(), sel = selectedWh();
+  const allOn = sel.length === all.length;
+  $('chips').innerHTML = all.map(w =>
+    `<button class="chip" data-wh="${esc(w)}" aria-pressed="${sel.includes(w)}">${esc(w)} ${esc(whLabel(w))}</button>`).join('')
+    + `<button class="chip" data-wh="*" aria-pressed="${allOn}">全部倉</button>`;
+  $('chips').querySelectorAll('.chip').forEach(b => b.onclick = () => {
+    const w = b.dataset.wh;
+    if (w === '*') whSel = allOn ? MAIN_WH.slice() : all.slice();
+    else {
+      const s = new Set(selectedWh());
+      s.has(w) ? s.delete(w) : s.add(w);
+      whSel = s.size ? [...s] : [w];
+    }
+    store.set('inv-wh', whSel); shown = PAGE; renderChips(); renderSearch();
+  });
+}
+
+let index = null;
+function buildIndex() {
+  // 同一個編號在不同倉的資料合在一張卡片
+  const byCode = new Map();
+  for (const [wh, code, name, qty, wt] of data.rows) {
+    let g = byCode.get(code);
+    if (!g) { g = { code, name, wt, stock: [], hay: '' }; byCode.set(code, g); }
+    if (name.length > g.name.length) g.name = name;
+    if (g.wt == null) g.wt = wt;
+    g.stock.push({ wh, qty });
+  }
+  for (const g of byCode.values()) {
+    g.hay = norm(g.code + ' ' + g.name); g.ncode = norm(g.code);
+    g.stock.sort((a, b) => (MAIN_WH.includes(b.wh) - MAIN_WH.includes(a.wh)) || a.wh.localeCompare(b.wh));
+  }
+  index = { data, groups: [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code)) };
+}
+function highlight(text, tokens) {
+  // 在原文上標出符合的字（忽略空白差異只做簡單比對）
+  let out = esc(text);
+  for (const t of tokens) {
+    if (!t) continue;
+    const re = new RegExp(t.split('').map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*'), 'gi');
+    out = out.replace(re, m => `<mark>${m}</mark>`);
+  }
+  return out;
+}
+function inPick(code) { return pick.some(p => p.code === code); }
+
+function cardHtml(g, sel, tokens) {
+  const rows = g.stock.filter(s => sel.includes(s.wh));
+  const neg = rows.some(s => s.qty < 0);
+  return `<article class="card">
+    <div class="name">${highlight(g.name, tokens)}</div>
+    <div class="code mono">${highlight(g.code, tokens)}</div>
+    <div class="stock">${rows.map(s => `
+      <div class="srow">
+        <div class="wh ${MAIN_WH.includes(s.wh) ? 'main' : ''}"><span class="no mono">${esc(s.wh)}</span>${esc(whLabel(s.wh))}</div>
+        <div class="qty ${s.qty < 0 ? 'neg' : s.qty === 0 ? 'zero' : ''}">${fmt(s.qty)}<small>支/個</small></div>
+      </div>`).join('')}
+      ${neg ? '<div class="negnote">帳上是負數，實際數量請以現場為準。</div>' : ''}
+      <div class="srow">
+        <span class="wt">${g.wt != null ? `單重 ${fmt(g.wt)} kg` : ''}</span>
+        <button class="add ${inPick(g.code) ? 'on' : ''}" data-add="${esc(g.code)}">${inPick(g.code) ? '✓ 已在備料清單' : '＋ 加入備料'}</button>
+      </div>
+    </div>
+  </article>`;
+}
+
+function renderSearch() {
+  if (!index || index.data !== data) buildIndex();
+  const raw = $('q').value.trim();
+  const tokens = raw ? raw.split(/\s+/).map(norm).filter(Boolean) : [];
+  const sel = selectedWh();
+  const view = $('searchView');
+  if (!tokens.length) {
+    const n = index.groups.filter(g => g.stock.some(s => sel.includes(s.wh))).length;
+    view.innerHTML = `<p class="meta">目前選的倉共有 ${n} 種品項。在上面打品名或編號開始找；可以打好幾段，用空白分開，例如「斜桿 1.8」「SB-BD」「螺絲 M6」。</p>`;
+    return;
+  }
+  const hit = index.groups.filter(g => tokens.every(t => g.hay.includes(t)));
+  const inSel = hit.filter(g => g.stock.some(s => sel.includes(s.wh)));
+  const outside = hit.length - inSel.length;
+  const q0 = tokens.join('');
+  inSel.sort((a, b) => ((b.ncode === q0) - (a.ncode === q0)) || ((b.ncode.startsWith(q0)) - (a.ncode.startsWith(q0))) || a.code.localeCompare(b.code));
+  let html = `<p class="meta">找到 ${inSel.length} 種${outside ? `，其他倉還有 ${outside} 種` : ''}</p>`;
+  if (!inSel.length) {
+    html = `<div class="banner">${outside
+      ? `目前選的倉沒有，但<b>其他倉有 ${outside} 種</b>。<br><button class="btn" id="showAll" style="margin-top:8px">看全部倉</button>`
+      : '找不到。試試看少打幾個字，或只打編號的一部分。'}</div>`;
+  }
+  html += inSel.slice(0, shown).map(g => cardHtml(g, sel, tokens)).join('');
+  if (inSel.length > shown) html += `<button class="more" id="more">再顯示 ${Math.min(PAGE, inSel.length - shown)} 筆（共 ${inSel.length}）</button>`;
+  else if (outside && inSel.length) html += `<button class="more" id="showAll">其他倉還有 ${outside} 種，看全部倉</button>`;
+  view.innerHTML = html;
+  const more = $('more'); if (more) more.onclick = () => { shown += PAGE; renderSearch(); };
+  const sa = $('showAll'); if (sa) sa.onclick = () => { whSel = whList(); store.set('inv-wh', whSel); renderChips(); renderSearch(); };
+  view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => togglePick(b.dataset.add));
+}
+
+/* ---------- 備料清單 ---------- */
+function savePick() { store.set('inv-pick', pick); $('pickCount').textContent = pick.length ? `(${pick.length})` : ''; }
+function togglePick(code) {
+  const i = pick.findIndex(p => p.code === code);
+  if (i >= 0) pick.splice(i, 1);
+  else { const g = index.groups.find(x => x.code === code); pick.push({ code, name: g ? g.name : '', need: '', done: false }); toast('已加入備料清單'); }
+  savePick(); renderSearch();
+}
+function stockText(code) {
+  const g = index.groups.find(x => x.code === code);
+  if (!g) return '（目前報表裡沒有這個編號）';
+  return g.stock.map(s => `${s.wh}${whLabel(s.wh)} ${fmt(s.qty)}`).join('、');
+}
+function renderPick() {
+  if (!index || index.data !== data) buildIndex();
+  const v = $('pickView');
+  if (!pick.length) {
+    v.innerHTML = `<div class="banner">備料清單是空的。在「查詢」找到東西後，按「＋ 加入備料」。</div>`;
+    return;
+  }
+  const done = pick.filter(p => p.done).length;
+  v.innerHTML = `<p class="meta">共 ${pick.length} 項，已備好 ${done} 項</p>` + pick.map((p, i) => `
+    <article class="card pick ${p.done ? 'done' : ''}">
+      <input type="checkbox" data-done="${i}" ${p.done ? 'checked' : ''} aria-label="備好了">
+      <div class="body">
+        <div class="name">${esc(p.name)}</div>
+        <div class="code mono">${esc(p.code)}</div>
+        <div class="meta" style="margin:4px 0 0">庫存：${esc(stockText(p.code))}</div>
+        <label class="need">要備 <input type="number" inputmode="numeric" min="0" data-need="${i}" value="${esc(p.need)}"> 支/個</label>
+      </div>
+      <button class="del" data-del="${i}" aria-label="移除">×</button>
+    </article>`).join('') + `
+    <div class="actions">
+      <button class="btn primary" id="copyPick">複製清單（貼到 LINE）</button>
+      <button class="btn ghost" id="clearDone">移除已備好的</button>
+      <button class="btn ghost" id="clearPick">全部清空</button>
+    </div>`;
+  v.querySelectorAll('[data-done]').forEach(c => c.onchange = () => { pick[c.dataset.done].done = c.checked; savePick(); renderPick(); });
+  v.querySelectorAll('[data-need]').forEach(c => c.oninput = () => { pick[c.dataset.need].need = c.value; savePick(); });
+  v.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { pick.splice(b.dataset.del, 1); savePick(); renderPick(); });
+  $('clearDone').onclick = () => { pick = pick.filter(p => !p.done); savePick(); renderPick(); };
+  $('clearPick').onclick = () => { if (confirm('確定清空備料清單？')) { pick = []; savePick(); renderPick(); } };
+  $('copyPick').onclick = async () => {
+    const lines = pick.map((p, i) => `${i + 1}. ${p.done ? '✅' : '⬜'} ${p.name}\n   ${p.code}${p.need ? `　要備 ${p.need}` : ''}\n   庫存：${stockText(p.code)}`);
+    const text = `備料清單（庫存資料 ${data.date}）\n` + lines.join('\n');
+    try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
+    catch (e) { prompt('請長按複製：', text); }
+  };
+}
+
+/* ---------- 切換 ---------- */
+function setTab(t) {
+  $('tabSearch').setAttribute('aria-selected', t === 'search');
+  $('tabPick').setAttribute('aria-selected', t === 'pick');
+  $('searchView').hidden = t !== 'search';
+  $('pickView').hidden = t !== 'pick';
+  t === 'pick' ? renderPick() : renderSearch();
+}
+$('tabSearch').onclick = () => setTab('search');
+$('tabPick').onclick = () => setTab('pick');
+let qTimer;
+$('q').oninput = () => { clearTimeout(qTimer); qTimer = setTimeout(() => { shown = PAGE; if ($('pickView').hidden) renderSearch(); else setTab('search'); }, 120); };
+$('clearQ').onclick = () => { $('q').value = ''; $('q').focus(); shown = PAGE; setTab('search'); };
+
+function render() {
+  $('emptyView').hidden = !!data;
+  $('mainView').hidden = !data;
+  $('footImport').hidden = !data;
+  renderHeader();
+  savePick();
+  if (!data) return;
+  renderChips();
+  setTab($('pickView').hidden ? 'search' : 'pick');
+}
+render();
+
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
