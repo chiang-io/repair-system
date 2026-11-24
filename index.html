@@ -116,6 +116,10 @@ td.mv button{padding:3px 6px;font-size:.76rem;margin-right:2px}
 .boxtabs button{display:grid;gap:0;padding:6px 10px;text-align:left}
 .boxtabs button small{font-size:.7rem;color:var(--muted)}
 .boxtabs button[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent)}
+.pastebox[open]{border:2px solid var(--accent)}
+.pastebox textarea{width:100%;font:inherit;font-family:var(--f-mono);font-size:.82rem;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)}
+.pastebox td input[type=number]{min-width:0;width:80px}
+.pastebox .badl{margin:0;padding-left:1.2em;font-size:.8rem;color:var(--muted);display:grid;gap:2px}
 .mixbar{border:1px dashed var(--accent);border-radius:4px;padding:8px 10px;display:grid;gap:6px;font-size:.88rem}
 .savebar{display:grid;gap:8px;padding:12px;border:1px solid var(--line);border-radius:4px}
 .contedit summary{cursor:pointer;color:var(--steel);font-size:.85rem}
@@ -230,6 +234,14 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
           <tbody id="cargoBody"></tbody>
         </table>
       </div>
+      <details class="contedit pastebox" id="pasteSet">
+        <summary><b>貼上整張訂單</b>（從 ERP 或 Excel 複製品名和數量，系統自動認）</summary>
+        <textarea id="pasteTxt" rows="6" placeholder="一行一個品項，例如：&#10;主架φ60.2mmx3.2tx1.5m	300&#10;斜桿 φ48.4mm T:2.3mm L:1.5 x 1.5m	200&#10;蜂巢鋼200x161mmx2.4m	120&#10;橫桿 1.8m 8捆"></textarea>
+        <div class="row"><button type="button" id="pasteRead" class="primary">讀取</button><span class="note">只認常用品項（重型）；每捆支數照預設，單子上有寫「40/捆」就照單子。</span></div>
+        <div id="pasteOut"></div>
+        <div class="row" id="pasteBar" hidden><input type="checkbox" id="pasteClear" checked><label for="pasteClear" style="flex:none">先清空清單</label>
+          <button type="button" id="pasteAdd" class="primary">全部加入清單</button></div>
+      </details>
       <div class="addbar">
         <div class="row">
           <label for="catFam"><b>從常用品項加入</b></label>
@@ -796,7 +808,8 @@ const CATALOG=[
       :{name:`橫桿 ${m}m`,pcs:100,unit:u,l:Math.round(m*100),w:60,h:70,perLayer:10,tiers:3})},
   {group:'斜桿 φ48.6（100 支/捆，× 60 × 70 cm）',items:[['0.6x1.5',5.62,180],['0.9x1.0',4.8,165],['0.9x1.5',5.98,205],['1.2x1.5',6.31,215],['1.5x1.5',6.8,225],['1.8x1.5',7.32,250],['2.4x1.5',8.66,300]]
     .map(([m,u,l])=>({name:`斜桿 ${m}m`,pcs:100,unit:u,l,w:60,h:70,perLayer:10}))},
-  {group:'蜂巢鋼 200×161mm（30 支/捆，長 × 110 × 100 cm）',items:[['0.6',13.36],['0.9',18.18],['1.2',22.98],['1.5',27.63],['1.8',32.78],['2.4',42.7]]
+  // 蜂巢鋼：一層固定 5 支（使用者確認），多半 5 × 6 層 = 30 支一捆，偶爾 40 支（5 × 8 層）；2.1／2.7／3.0m 單重照 packaging.csv
+  {group:'蜂巢鋼 200×161mm（多半 30 支/捆 = 5 × 6 層，長 × 110 × 100 cm）',items:[['0.6',13.36],['0.9',18.18],['1.2',22.98],['1.5',27.63],['1.8',32.78],['2.1',37.58],['2.4',42.7],['2.7',47.3],['3.0',52.3]]
     .map(([m,u])=>({name:`蜂巢鋼 ${m}m`,pcs:30,unit:u,l:Math.round(m*100),w:110,h:100,perLayer:5}))},
   {group:'基座 φ60.2（100 支/捆，115 × 60 × 40 cm）',items:[{name:'基座 0.2m',pcs:100,unit:2.2,l:115,w:60,h:40,perLayer:25}]},
   {group:'輔助桿 φ60.2（100 支/捆）',items:[{name:'輔助桿 0.25m',pcs:100,unit:2.28,l:115,w:60,h:50,perLayer:20},{name:'輔助桿 0.5m',pcs:100,unit:3.38,l:115,w:105,h:52,perLayer:20}]},
@@ -806,7 +819,7 @@ const CATALOG=[
   {group:'棧板、木箱（重量、高度請自己改）',items:[{name:'棧板',pcs:1,unit:1000,l:110,w:110,h:100,pallet:true},
     {name:'木箱',pcs:1,unit:300,l:110,w:100,h:80,pallet:true,stack:true,box:true}]},
 ];
-CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5 可以綁在一起
+CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':/基座|輔助桿/.test(it.name)?'基座輔助桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿、基座＋輔助桿（使用者確認可以綁一起）
 const CAT_ITEMS=CATALOG.flatMap(g=>g.items);
 // 實際單重（選填）：存在瀏覽器 cl-unitw，{品名: kg/支}；有填就蓋過資料上的單重
 CAT_ITEMS.forEach(it=>it.unit0=it.unit);
@@ -834,7 +847,7 @@ function catInfo(){
   const u=it.per||'捆';
   $('catInfo').textContent=it.box?`一箱 ${it.l}×${it.w}×${it.h} cm，可以疊。高度常不一樣，預設 ${fmt(it.unit)} kg，加入後請在清單改成實際的高度和重量。`
     :it.pallet?`一板 ${it.l}×${it.w}×${it.h} cm，預設 ${fmt(it.unit)} kg，加入後請改成實際重量。`
-    :`一${u} ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg${it.uw?`（實際單重，資料上 ${it.unit0}）`:''}，每${u}約 ${fmt(it.unit*it.pcs+(it.tare||0))} kg${it.tare?`（含棧板 ${it.tare} kg）`:''}。`;
+    :`一${u} ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg${it.uw?`（實際單重，資料上 ${it.unit0}）`:''}，每${u}約 ${fmt(it.unit*it.pcs+(it.tare||0))} kg${it.tare?`（含棧板 ${it.tare} kg）`:''}。${/蜂巢鋼/.test(it.name)?'一層固定 5 支；40 支一捆就把「每捆」改 40（5 × 8 層，高約 133）。':''}`;
   $('pcsWrap').hidden=$('qtyWrap').hidden=!!it.pallet;$('catTotUnit').textContent=it.pallet?(it.box?'箱':'板'):'支';
   catSplit();
 }
@@ -957,6 +970,99 @@ $('mixDone').onclick=()=>{
     up:true,stack:true,floor:false,pref:'auto',tiers:it0.tiers||0});
   MIX=[];$('mixQty').value=1;renderMix();renderCargo();run();
   $('catInfo').textContent=result.missed.length?`混綁加入了，但目前有 ${result.missed.length} 件裝不下。`:'混綁加入了，全部都裝得下。';
+};
+// ---------- 貼上整張訂單：一行一行認品名和數量 ----------
+// 品名認品項（重型常用品項），長度照「…1.5m」、斜桿照「1.5 x 1.5」；數量 = 品名後面那一格數字（Excel/ERP 複製是用 Tab 分格），
+// 或文字裡「300支」「8捆」；單子上有「40/捆」就照單子的每捆支數。
+const PASTE_ACC=/貼紙|固定器|螺絲|華司|調整器|底座|主架座|桿頭|配件|平台|夾|轉盤|電機/;
+const PASTE_LIGHT=/\(輕\)|輕型|φ\s*42\.7|vertical|horizontal|diagonal/i;
+function pasteFam(s){
+  if(/top\s*beam/i.test(s))return 'Top Beam';
+  if(/蜂巢鋼/.test(s))return '蜂巢鋼';
+  if(/平主架/.test(s))return '平主架';
+  if(/主架|立桿/.test(s))return '主架';
+  if(/基座/.test(s))return '基座';
+  if(/輔助桿/.test(s))return '輔助桿';
+  if(/U型調整座|U調/i.test(s))return 'U調';
+  if(/平面調整座|下調/.test(s))return '下調';
+  if(/橫桿/.test(s))return '橫桿';
+  if(/斜桿/.test(s))return '斜桿';
+  return null;
+}
+const pNum=t=>/^0\d$/.test(t)?+t/10:+t;   // 「09」當 0.9（單子上的筆誤）
+function pasteNorm(raw){
+  return raw.replace(/[！-～]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/　/g,' ')
+    .replace(/(\d),(?=\d{3}(?!\d))/g,'$1').replace(/(\d)\s*[xX×*]\s*(\d)/g,'$1x$2').trim();
+}
+// 回傳 {it, end}：認到的常用品項、品名裡尺寸結束的位置（數量通常在後面）
+function pasteItem(name,fam){
+  const list=CAT_ITEMS.filter(it=>!it.pallet&&famOf(it)===fam);
+  if(fam==='斜桿'){
+    let hit=null;for(const m of name.matchAll(/(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)/g)){const a=pNum(m[1]),b=pNum(m[2]);if(a>0&&a<=3.5&&b>0&&b<=3.5)hit={a,b,end:m.index+m[0].length};}
+    if(!hit)return {why:'看不出斜桿尺寸'};
+    const it=list.find(x=>{const [p,q]=sizeOf(x).split('x').map(Number);return Math.abs(p-hit.a)<1e-6&&Math.abs(q-hit.b)<1e-6});
+    return it?{it,end:hit.end}:{why:`常用品項沒有斜桿 ${hit.a}x${hit.b}m`};
+  }
+  let hit=null;for(const m of name.matchAll(/(\d+(?:\.\d+)?)\s*m(?![a-z])/gi)){const v=pNum(m[1]);if(v>0&&v<=6)hit={v,end:m.index+m[0].length};}
+  if(list.length===1)return {it:list[0],end:hit?hit.end:0};
+  if(!hit)return {why:'看不出長度'};
+  const it=list.find(x=>Math.abs(+sizeOf(x)-hit.v)<1e-6);
+  return it?{it,end:hit.end}:{why:`常用品項沒有${fam} ${hit.v}m`};
+}
+let PASTE={ok:[],bad:[]};
+function pasteParse(txt){
+  const ok=[],bad=[];
+  txt.split(/\r?\n/).forEach(raw=>{
+    const line=pasteNorm(raw);
+    if(!line||!/[一-鿿A-Za-z]/.test(line)||(/品名/.test(line)&&/數量/.test(line)))return;
+    const cells=line.split('\t').map(s=>s.trim()),ni=cells.findIndex(c=>pasteFam(c));
+    const short=line.replace(/\t+/g,'  ').slice(0,70);
+    if(ni<0){bad.push([short,'常用品項沒有']);return}
+    const name=cells[ni],fam=pasteFam(name);
+    if(PASTE_ACC.test(name)){bad.push([short,'配件，常用品項沒有']);return}
+    if(PASTE_LIGHT.test(name)||(fam==='主架'&&/φ\s*48/.test(name))){bad.push([short,'輕型（常用品項只有重型）']);return}
+    const f=pasteItem(name,fam);if(!f.it){bad.push([short,f.why]);return}
+    const pcsM=line.match(/(\d+)\s*(?:支|pcs)?\s*\/\s*(?:捆|梱|板)/i)||line.match(/每\s*(?:捆|梱|板)\s*(\d+)/);
+    const pcs=pcsM?+pcsM[1]:f.it.pcs;
+    // 數量：品名後面第一個只有數字的格子；沒有分格就找品名尺寸後面的「300支」「8捆」或數字
+    let q=null,bundles=false;
+    for(const c of cells.slice(ni+1)){const m=c.match(/^(\d+(?:\.\d+)?)\s*(支|pcs|捆|梱|板)?$/i);if(m){q=+m[1];bundles=/捆|梱|板/.test(m[2]||'');break}}
+    if(q==null){
+      const tail=(cells.length>1?cells.slice(ni+1).join(' '):name.slice(f.end))
+        .replace(/每\s*(?:捆|梱|板)\s*\d+\s*支?|\d+\s*(?:支|pcs)?\s*\/\s*(?:捆|梱|板)(?:\s*\*\s*\d+)?|φ\s*[\d.]+\s*(?:mm)?|[\d.]+\s*(?:mm|kg|cm)|x?\s*[\d.]+\s*t\b|T\s*:\s*[\d.]+\s*(?:mm)?/gi,' ');
+      const m=tail.match(/(\d+)\s*(支|pcs|捆|梱|板)/i)||tail.match(/(\d+)/);
+      if(m){q=+m[1];bundles=/捆|梱|板/.test(m[2]||'');}
+    }
+    if(!q){bad.push([short,'看不出數量']);return}
+    const total=Math.round(bundles?q*pcs:q);
+    const same=ok.find(r=>r.it===f.it&&r.pcs===pcs);if(same)same.total+=total;else ok.push({it:f.it,pcs,total});
+  });
+  return {ok,bad};
+}
+function pasteSplitText(r){
+  const p=Math.max(1,Math.floor(r.pcs)||1),t=Math.max(0,Math.floor(r.total)||0),full=Math.floor(t/p),rem=t%p,u=r.it.per||'捆';
+  return !t?'—':`${full?`${full} ${u}`:''}${full&&rem?'＋':''}${rem?`零頭 ${rem} 支`:''}・約 ${fmt(t*r.it.unit+(r.it.tare||0)*Math.ceil(t/p))} kg`;
+}
+function renderPaste(){
+  const {ok,bad}=PASTE;
+  $('pasteOut').innerHTML=(!ok.length&&!bad.length?'<p class="note">沒有讀到東西，請貼上品名和數量。</p>':'')+
+    (ok.length?`<p style="margin:0"><b>認出 ${ok.length} 種</b>（數字可以改）：</p><div class="tablewrap"><table><thead><tr><th>品項</th><th>總共幾支</th><th>每捆／板幾支</th><th>＝</th></tr></thead><tbody>${ok.map((r,k)=>
+      `<tr><td>${esc(r.it.name.replace(/（.*$/,''))}</td><td><input type="number" min="0" step="1" data-pk="${k}" data-f="total" value="${r.total}"></td><td><input type="number" min="1" step="1" data-pk="${k}" data-f="pcs" value="${r.pcs}"></td><td id="pst${k}">${pasteSplitText(r)}</td></tr>`).join('')}</tbody></table></div>`:'')+
+    (bad.length?`<p class="note" style="margin-top:6px"><b>沒認出來 ${bad.length} 行</b>（要的話用「＋ 自訂貨物」自己加）：</p><ul class="badl">${bad.map(([l,w])=>`<li>${esc(l)} <b>→ ${esc(w)}</b></li>`).join('')}</ul>`:'');
+  $('pasteBar').hidden=!ok.length;
+}
+$('pasteRead').onclick=()=>{PASTE=pasteParse($('pasteTxt').value);renderPaste();};
+$('pasteOut').addEventListener('input',e=>{const t=e.target;if(!t.dataset.pk)return;const r=PASTE.ok[+t.dataset.pk];r[t.dataset.f]=Math.max(0,Math.floor(+t.value||0));$('pst'+t.dataset.pk).textContent=pasteSplitText(r);});
+$('pasteAdd').onclick=()=>{
+  if($('pasteClear').checked)cargo=[];
+  let n=0;
+  PASTE.ok.forEach(r=>{const p=Math.max(1,r.pcs||1),t=Math.max(0,r.total||0);if(!t)return;n++;
+    const it=p===r.it.pcs?r.it:{...r.it,pcs:p,...partialDims(r.it,p)};
+    const full=Math.floor(t/p),rem=t%p;if(full)addCatalog(it,full);if(rem)addCatalog(it,rem,false);});
+  renderCargo();run();
+  const m=result.missed.length;
+  $('pasteOut').innerHTML=`<p style="margin:0"><b>已加入 ${n} 種品項。</b>${m?`<b class="bad">有 ${m} 件裝不下</b>，看右邊上方。`:'看右邊要幾櫃。'}${PASTE.bad.length?`另外有 ${PASTE.bad.length} 行沒認出來，要自己加。`:''}</p>`;
+  $('pasteBar').hidden=true;
 };
 $('clearRows').onclick=()=>{cargo=[];renderCargo();run();};
 $('addRow').onclick=()=>{cargo.push({name:'新貨物',l:50,w:40,h:40,kg:15,qty:10,up:true,stack:true});renderCargo()};
