@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上傳庫存</title>
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+:root{
+  --bg:#e9edf0; --surface:#ffffff; --sunk:#f3f5f7; --ink:#14212b; --muted:#5a6a76; --line:#cfd7dd;
+  --accent:#f2a900; --accent-ink:#1a1400; --steel:#1f5f8b; --good:#1d7a4c; --warn:#a85b00; --bad:#b3261e;
+  --hl:#fff1c2; --bar:#16354d; --bar-ink:#ffffff; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e161c; --surface:#16212a; --sunk:#111b22; --ink:#e2e9ee; --muted:#8fa0ad; --line:#2a3a46;
+  --accent:#f5b81f; --accent-ink:#1a1400; --steel:#6fa8d6; --good:#4fc48a; --warn:#f0a040; --bad:#f2786f;
+  --hl:#3d3418; --bar:#0b1d2a; --bar-ink:#e2e9ee; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0e161c; --surface:#16212a; --sunk:#111b22; --ink:#e2e9ee; --muted:#8fa0ad; --line:#2a3a46;
+  --accent:#f5b81f; --accent-ink:#1a1400; --steel:#6fa8d6; --good:#4fc48a; --warn:#f0a040; --bad:#f2786f;
+  --hl:#3d3418; --bar:#0b1d2a; --bar-ink:#e2e9ee; color-scheme:dark }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Noto Sans TC",system-ui,sans-serif}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--steel)}
+header{background:var(--bar);color:var(--bar-ink)}
+.wrap{max-width:820px;margin:0 auto;padding:0 16px}
+header .wrap{display:flex;align-items:center;gap:12px;min-height:60px}
+header h1{font-size:20px;margin:0;letter-spacing:.04em}
+header .now{margin-left:auto;font-size:14px;opacity:.85;text-align:right}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:16px 0}
+.step.off{opacity:.45;pointer-events:none}
+.step h2{font-size:18px;margin:0 0 8px;display:flex;align-items:center;gap:10px}
+.step h2 .n{width:30px;height:30px;border-radius:50%;background:var(--steel);color:#fff;display:inline-grid;place-items:center;font-size:16px;flex:none}
+.step.done h2 .n{background:var(--good)}
+.step p{margin:6px 0}
+.muted{color:var(--muted);font-size:14px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:26px 16px;text-align:center;background:var(--sunk)}
+.drop.over{border-color:var(--steel);background:var(--hl)}
+.btn{border:none;border-radius:10px;padding:10px 18px;background:var(--steel);color:#fff;font-weight:500}
+.btn.primary{background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:17px;padding:12px 22px}
+.btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:15px}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left}
+th{color:var(--muted);font-weight:500;font-size:13px}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+.pw{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.pw input{height:44px;border:1.5px solid var(--line);border-radius:10px;padding:0 12px;background:var(--sunk);min-width:0;flex:1 1 200px;max-width:280px}
+.msg{font-size:14px;margin-top:6px}
+.msg.bad{color:var(--bad)} .msg.good{color:var(--good)}
+ol.howto{margin:8px 0;padding-left:22px}
+ol.howto li{margin:6px 0}
+kbd{font-family:inherit;background:var(--good);color:#fff;border-radius:6px;padding:1px 8px;font-size:14px;white-space:nowrap}
+.site{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+footer{color:var(--muted);font-size:13px;padding:10px 0 40px}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>上傳庫存（電腦用）</h1>
+  <div class="now" id="siteNow">網站上的資料：檢查中…</div>
+</div></header>
+
+<main class="wrap">
+  <p class="muted" style="margin-top:16px">把 ERP 的「存貨異動統計表-分倉」上傳到網站，大家的手機打開「庫存查詢」就會自動更新。整個過程大約 1 分鐘。</p>
+
+  <section class="step" id="s1">
+    <h2><span class="n">1</span>選擇報表</h2>
+    <div class="drop" id="drop">
+      <p>把 <b>PDF</b> 或 <b>Excel</b> 拖到這裡，或</p>
+      <button class="btn" id="pick">選擇檔案</button>
+      <input type="file" id="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" hidden>
+    </div>
+    <div id="result"></div>
+  </section>
+
+  <section class="step off" id="s2">
+    <h2><span class="n">2</span>公司密碼</h2>
+    <p class="muted">資料會用這組密碼加密，因為網站是公開的。手機第一次打開時要輸入同一組密碼。這台電腦會記住。</p>
+    <div class="pw">
+      <input id="pw1" type="password" autocomplete="new-password" placeholder="密碼">
+      <input id="pw2" type="password" autocomplete="new-password" placeholder="再輸入一次">
+      <label class="muted"><input type="checkbox" id="showPw"> 顯示</label>
+    </div>
+    <div class="msg" id="pwMsg"></div>
+  </section>
+
+  <section class="step off" id="s3">
+    <h2><span class="n">3</span>下載資料檔</h2>
+    <p>按下面的按鈕，會下載一個 <b class="mono">inventory-data.json</b>（已加密）。</p>
+    <button class="btn primary" id="make">下載資料檔</button>
+    <div class="msg" id="makeMsg"></div>
+  </section>
+
+  <section class="step off" id="s4">
+    <h2><span class="n">4</span>放到 GitHub</h2>
+    <ol class="howto">
+      <li>按 <a id="ghUpload" href="https://github.com/iop15159/repair-system/upload/main/inventory" target="_blank" rel="noopener"><b>打開 GitHub 上傳頁面</b></a>（要先登入 GitHub）。</li>
+      <li>把剛剛下載的 <b class="mono">inventory-data.json</b> 拖進去。<br><span class="muted">檔名一定要是 inventory-data.json；如果下載時變成 inventory-data (1).json，請先改回來。</span></li>
+      <li>拉到最下面，按綠色的 <kbd>Commit changes</kbd>。</li>
+    </ol>
+    <p>大約等 1～2 分鐘，按下面的按鈕確認網站上的資料已經換成新的：</p>
+    <div class="site">
+      <button class="btn ghost" id="check">檢查網站上的資料</button>
+      <span id="checkMsg" class="msg"></span>
+    </div>
+  </section>
+
+  <footer>
+    手機查詢網址：<a id="phoneUrl" href="./">./</a>　｜　數量來自 ERP 報表，不是即時庫存。
+  </footer>
+</main>
+
+<script src="common.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = n => n == null ? '' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
+};
+let parsed = null, lastUploadedAt = null;
+$('phoneUrl').textContent = new URL('./', location.href).href;
+
+/* 網站上目前的資料（只讀明碼的日期與筆數） */
+async function siteInfo() {
+  try {
+    const r = await fetch(`${DATA_FILE}?t=${Date.now()}`, { cache: 'no-store' });
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch (e) { return { error: true }; }
+}
+const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+function describe(f) {
+  if (!f) return '還沒有資料';
+  if (f.error) return '連不上網站';
+  return `${f.date}（${f.count} 筆，${when(f.uploadedAt)} 上傳）`;
+}
+(async () => { $('siteNow').textContent = '網站上的資料：' + describe(await siteInfo()); })();
+
+/* 1. 選檔 */
+$('pick').onclick = () => $('file').click();
+$('file').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) load(f); };
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) load(f); });
+async function load(f) {
+  $('result').innerHTML = '<p>讀取中…</p>';
+  try {
+    const r = await readReportFile(f);
+    if (!r.rows.length) {
+      $('result').innerHTML = '<p class="msg bad">這個檔案裡找不到庫存資料。請確認是「存貨異動統計表-分倉」，而且有「產品編號」「品名」「結存數量」這幾欄。</p>';
+      return;
+    }
+    parsed = r;
+    const by = {}; r.rows.forEach(x => { const b = by[x[0]] || (by[x[0]] = { n: 0, q: 0 }); b.n++; b.q += x[3]; });
+    $('result').innerHTML = `
+      <p class="msg good" style="margin-top:12px">✓ 讀到 <b>${r.rows.length}</b> 筆，資料日期 <b>${esc(r.date)}</b>（${esc(r.dateSource)}）　<span class="muted">${esc(r.file)}</span></p>
+      <table><thead><tr><th>倉別</th><th>名稱</th><th class="num">品項數</th><th class="num">結存合計</th></tr></thead><tbody>
+      ${Object.keys(by).sort().map(k => `<tr><td class="mono">${esc(k)}</td><td>${esc(r.wh[k] || '')}</td><td class="num">${by[k].n}</td><td class="num">${fmt(by[k].q)}</td></tr>`).join('')}
+      </tbody></table>
+      <p class="muted">「結存合計」可以和報表最後的「合計」比對，一樣就代表讀對了。${r.skipped ? `有 ${r.skipped} 行看不懂，已略過。` : ''}</p>`;
+    $('s1').classList.add('done'); $('s2').classList.remove('off');
+    checkPw();
+    if (!$('pw1').value) $('pw1').focus();
+  } catch (err) {
+    console.error(err);
+    $('result').innerHTML = `<p class="msg bad">讀取失敗：${esc(err.message)}</p>`;
+  }
+}
+
+/* 2. 密碼（記在這台電腦） */
+const saved = store.get('inv-upload-pass', '');
+if (saved) { $('pw1').value = saved; $('pw2').value = saved; }
+$('showPw').onchange = e => { $('pw1').type = $('pw2').type = e.target.checked ? 'text' : 'password'; };
+function checkPw() {
+  const a = $('pw1').value, b = $('pw2').value, m = $('pwMsg');
+  let ok = false;
+  if (!a) m.textContent = '';
+  else if (a.length < 4) { m.textContent = '至少 4 個字。'; m.className = 'msg bad'; }
+  else if (a !== b) { m.textContent = b ? '兩次輸入的不一樣。' : '請再輸入一次確認。'; m.className = 'msg bad'; }
+  else { ok = true; m.textContent = saved && a === saved ? '✓ 使用這台電腦記住的密碼' : '✓ 密碼可以用'; m.className = 'msg good'; }
+  $('s2').classList.toggle('done', ok);
+  $('s3').classList.toggle('off', !(ok && parsed));
+  return ok;
+}
+$('pw1').oninput = $('pw2').oninput = checkPw;
+
+/* 3. 加密並下載 */
+$('make').onclick = async () => {
+  if (!parsed || !checkPw()) return;
+  const pw = $('pw1').value;
+  if (saved && pw !== saved && !confirm('密碼和上次不一樣。\n\n換密碼後，每支手機都要重新輸入新密碼。確定要換嗎？')) return;
+  $('makeMsg').textContent = '加密中…'; $('makeMsg').className = 'msg';
+  try {
+    const { skipped, ...obj } = parsed;
+    obj.uploadedAt = new Date().toISOString();
+    const file = await encryptData(obj, pw);
+    const back = await decryptData(file, pw);                 // 先自己解一次，確定檔案沒問題
+    if (back.rows.length !== obj.rows.length) throw new Error('加密檢查失敗');
+    const url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = DATA_FILE; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    store.set('inv-upload-pass', pw);
+    lastUploadedAt = obj.uploadedAt;
+    $('makeMsg').textContent = `✓ 已下載 ${DATA_FILE}，接著做第 4 步。`; $('makeMsg').className = 'msg good';
+    $('s3').classList.add('done'); $('s4').classList.remove('off');
+  } catch (err) {
+    console.error(err);
+    $('makeMsg').textContent = '失敗：' + err.message; $('makeMsg').className = 'msg bad';
+  }
+};
+
+/* 4. 檢查網站是否已更新 */
+$('check').onclick = async () => {
+  const m = $('checkMsg'); m.textContent = '檢查中…'; m.className = 'msg';
+  const f = await siteInfo();
+  $('siteNow').textContent = '網站上的資料：' + describe(f);
+  if (f && !f.error && lastUploadedAt && f.uploadedAt === lastUploadedAt) {
+    m.textContent = '✓ 網站已經是新資料了，手機打開就會更新。'; m.className = 'msg good'; $('s4').classList.add('done');
+  } else if (f && f.error) {
+    m.textContent = '連不上網站，等一下再試。'; m.className = 'msg bad';
+  } else {
+    m.textContent = `網站上還是：${describe(f)}。GitHub 大約要 1～2 分鐘，請稍等再按一次。`; m.className = 'msg';
+  }
+};
+</script>
+</body>
+</html>

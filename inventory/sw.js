@@ -1,8 +1,8 @@
 'use strict';
 // 庫存查詢的離線快取：頁面先試網路（拿到最新版），沒網路時用快取。
 // 讀檔工具（pdf.js、SheetJS）與字型第一次用到時存起來，之後沒網路也能匯入。
-const CACHE = 'inventory-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/favicon-32.png'];
+const CACHE = 'inventory-v2';
+const SHELL = ['./', './index.html', './common.js', './upload.html', './manifest.webmanifest', './icons/icon-192.png', './icons/favicon-32.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
@@ -21,6 +21,8 @@ self.addEventListener('fetch', e => {
   const lib = /^(cdn\.jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com)$/.test(url.hostname);
   if (!sameOrigin && !lib) return;
   if (sameOrigin && !url.pathname.startsWith(new URL('./', self.registration.scope).pathname)) return;
+  // 資料檔由頁面自己處理（解密後存在手機），不經過快取，才會拿到最新的
+  if (sameOrigin && url.pathname.endsWith('/inventory-data.json')) return;
   if (lib) {
     // 版本固定的外部檔案：有快取就用快取
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
