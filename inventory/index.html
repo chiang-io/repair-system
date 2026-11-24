@@ -178,7 +178,10 @@ footer .row.btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 <script src="common.js"></script>
 <script>
 'use strict';
-const MAIN_WH = ['02', '06'];          // 倉管常用：02 新品倉、06 五金倉
+const MAIN_WH = ['02', '06'];          // 倉管常用：02 新品倉、06 五金倉（第一次打開預設選這兩個）
+const WH_ORDER = ['01', '02', '03', '06', '04'];   // 倉別按鈕與卡片裡的排列順序；其他倉排在後面
+const whRank = w => { const i = WH_ORDER.indexOf(w); return i < 0 ? WH_ORDER.length : i; };
+const whCmp = (a, b) => (whRank(a) - whRank(b)) || a.localeCompare(b);
 const PAGE = 60;                        // 一次顯示幾張卡片
 const $ = id => document.getElementById(id);
 
@@ -211,7 +214,7 @@ function daysAgo(iso) {
 /* ---------- 畫面 ---------- */
 function whList() {
   const s = new Set(data.rows.map(r => r[0]));
-  return [...s].sort((a, b) => (MAIN_WH.includes(b) - MAIN_WH.includes(a)) || a.localeCompare(b));
+  return [...s].sort(whCmp);
 }
 // 使用者點選的倉（可以一個都沒選）；第一次打開預設 02、06
 function pickedWh() {
@@ -267,7 +270,7 @@ function buildIndex() {
   }
   for (const g of byCode.values()) {
     g.hay = norm(g.code + ' ' + g.name); g.ncode = norm(g.code);
-    g.stock.sort((a, b) => (MAIN_WH.includes(b.wh) - MAIN_WH.includes(a.wh)) || a.wh.localeCompare(b.wh));
+    g.stock.sort((a, b) => whCmp(a.wh, b.wh));
   }
   index = { data, groups: [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code)) };
 }
