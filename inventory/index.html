@@ -437,7 +437,7 @@ function renderPick() {
 }
 
 /* ---------- 數量回報（大家共用，存在 Google 試算表） ---------- */
-const REASONS = ['備貨拿走', '放到別的地方', '帳錯了', '不知道'];
+const REASONS = ['備貨拿走', '帳錯了'];
 function saveReports() {
   store.set('inv-reports-shared', reports);
   $('repCount').textContent = reports.length ? `(${reports.length})` : '';
