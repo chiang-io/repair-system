@@ -90,9 +90,13 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .pick input[type=checkbox]{width:26px;height:26px;margin-top:2px;flex:none;accent-color:var(--good)}
 .pick .body{flex:1;min-width:0}
 .pick.done .name{text-decoration:line-through;color:var(--muted)}
-.pick .need{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:14px;flex-wrap:wrap}
-.pick .need input{width:90px;height:36px;border:1.5px solid var(--line);border-radius:8px;background:var(--sunk);padding:0 8px;font-size:16px}
 .pick .del{border:none;background:none;color:var(--muted);font-size:22px;line-height:1;padding:0 4px}
+.pick .qtyline{font-size:16px;margin-top:4px}
+.pick .qtyline b{font-size:20px}
+.cgroup{margin:14px 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cgroup h3{margin:0;font-size:17px;flex:1;min-width:0;word-break:break-all}
+.cgroup .small{padding:5px 10px;font-size:13px}
+.picknote{font-size:13px;color:var(--steel);margin-top:2px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .btn{border:none;border-radius:10px;padding:10px 16px;background:var(--steel);color:#fff;font-weight:500}
 .btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
@@ -195,6 +199,24 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   </footer>
 </main>
 <div class="toast" id="toast" hidden></div>
+<dialog id="pickDlg">
+  <form method="dialog" id="pickForm">
+    <h3 id="pickName"></h3>
+    <div class="mono" style="color:var(--steel);font-size:14px" id="pickCode"></div>
+    <div class="sys" id="pickStock"></div>
+    <label class="f" for="pickQty">要備幾支／個</label>
+    <input id="pickQty" type="number" inputmode="numeric" step="any" min="0" required placeholder="數量">
+    <label class="f" for="pickCust">給哪個客戶（選填）</label>
+    <input id="pickCust" type="text" list="custList" autocomplete="off" placeholder="客戶名稱">
+    <datalist id="custList"></datalist>
+    <div class="chips" id="custChips" style="margin-top:8px"></div>
+    <div class="live" id="pickLive"></div>
+    <div class="btnrow">
+      <button class="btn ghost" type="button" id="pickCancel">取消</button>
+      <button class="btn primary" type="submit">加入</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="repDlg">
   <form method="dialog" id="repForm">
     <h3 id="repName"></h3>
@@ -232,7 +254,8 @@ const store = {
 };
 let data = store.get('inv-data', null);     // {date, dateSource, file, uploadedAt, wh:{code:name}, rows:[[wh,code,name,qty,wt]]}
 let pass = store.get('inv-pass', null);     // 公司密碼（只存在這支手機）
-let pick = store.get('inv-pick', []);       // [{code, name, need, done}]
+let picks = store.get('inv-picks-shared', []); // 共用備料（未清掉的），先用上次抓到的顯示：[{id, at, customer, code, name, qty, done}]
+let picksOk = true;                           // Google 那邊的程式有沒有支援備料（舊版沒有）
 let reports = store.get('inv-reports-shared', []); // 共用回報（未處理的），先用上次抓到的顯示：[{id, code, name, wh, sys, actual, reason, note, at, dataDate}]
 const repState = { loading: false, error: '', at: 0 };
 let tab = 'search';
@@ -331,7 +354,7 @@ function highlight(text, tokens) {
   }
   return out;
 }
-function inPick(code) { return pick.some(p => p.code === code); }
+const openPicks = code => picks.filter(p => p.code === code && !p.done);
 
 function cardHtml(g, sel, tokens) {
   const rows = g.stock.filter(s => sel.includes(s.wh));
@@ -347,8 +370,8 @@ function cardHtml(g, sel, tokens) {
       </div>${repNoteHtml(g.code, s.wh)}`).join('')}
       ${neg ? '<div class="negnote">帳上是負數，實際數量請以現場為準。</div>' : ''}
       <div class="srow">
-        <span class="wt">${g.wt != null ? `單重 ${fmt(g.wt)} kg` : ''}</span>
-        <button class="add ${inPick(g.code) ? 'on' : ''}" data-add="${esc(g.code)}">${inPick(g.code) ? '✓ 已在備料清單' : '＋ 加入備料'}</button>
+        <span class="wt">${g.wt != null ? `單重 ${fmt(g.wt)} kg` : ''}${openPicks(g.code).length ? `<div class="picknote">備料中：${openPicks(g.code).map(p => `${esc(p.customer || '未填客戶')} ${fmt(p.qty)}`).join('、')}</div>` : ''}</span>
+        ${REPORT_API ? `<button class="add" data-add="${esc(g.code)}">＋ 加入備料</button>` : ''}
       </div>
     </div>
   </article>`;
@@ -382,58 +405,127 @@ function renderSearch() {
   view.innerHTML = html;
   const more = $('more'); if (more) more.onclick = () => { shown += PAGE; renderSearch(); };
   const sa = $('showAll'); if (sa) sa.onclick = () => { whSel = []; store.set('inv-wh', whSel); renderChips(); renderSearch(); };
-  view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => togglePick(b.dataset.add));
+  view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => openPick(b.dataset.add));
   view.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => openReport(b.dataset.rep, b.dataset.wh));
 }
 
-/* ---------- 備料清單 ---------- */
-function savePick() { store.set('inv-pick', pick); $('pickCount').textContent = pick.length ? `(${pick.length})` : ''; }
-function togglePick(code) {
-  const i = pick.findIndex(p => p.code === code);
-  if (i >= 0) pick.splice(i, 1);
-  else { const g = index.groups.find(x => x.code === code); pick.push({ code, name: g ? g.name : '', need: '', done: false }); toast('已加入備料清單'); }
-  savePick(); renderSearch();
+/* ---------- 備料清單（大家共用，存在 Google 試算表；客戶名稱不放進 GitHub） ---------- */
+function savePicks() {
+  store.set('inv-picks-shared', picks);
+  const n = picks.filter(p => !p.done).length;
+  $('pickCount').textContent = n ? `(${n})` : '';
+}
+function setPicks(list) {
+  picks = list; savePicks();
+  if (tab === 'search') renderSearch(); else if (tab === 'pick') renderPick();
 }
 function stockText(code) {
   const g = index.groups.find(x => x.code === code);
   if (!g) return '（目前報表裡沒有這個編號）';
   return g.stock.map(s => `${s.wh}${whLabel(s.wh)} ${fmt(s.qty)}`).join('、');
 }
+// 打過的客戶名稱（只記在這支手機，方便下次點選）
+function recentCustomers() {
+  const set = new Set(store.get('inv-customers', []));
+  picks.forEach(p => p.customer && set.add(p.customer));
+  return [...set].slice(0, 12);
+}
+let pickTarget = null, pickSending = false;
+function openPick(code) {
+  const g = index.groups.find(x => x.code === code); if (!g) return;
+  pickTarget = { code, name: g.name };
+  $('pickName').textContent = g.name;
+  $('pickCode').textContent = code;
+  $('pickStock').textContent = '庫存：' + stockText(code);
+  $('pickQty').value = ''; $('pickLive').textContent = '';
+  const cs = recentCustomers();
+  $('custList').innerHTML = cs.map(c => `<option value="${esc(c)}">`).join('');
+  $('custChips').innerHTML = cs.slice(0, 6).map(c => `<button type="button" class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join('');
+  $('custChips').querySelectorAll('[data-c]').forEach(b => b.onclick = () => { $('pickCust').value = b.dataset.c; markCust(); });
+  markCust();
+  $('pickDlg').showModal();
+  $('pickQty').focus();
+}
+function markCust() {
+  const v = $('pickCust').value.trim();
+  $('custChips').querySelectorAll('[data-c]').forEach(b => b.setAttribute('aria-pressed', b.dataset.c === v));
+}
+$('pickCust').oninput = markCust;
+$('pickCancel').onclick = () => $('pickDlg').close();
+$('pickForm').onsubmit = async e => {
+  e.preventDefault();
+  const qty = parseFloat($('pickQty').value);
+  if (isNaN(qty) || qty <= 0 || !pickTarget) { $('pickQty').focus(); return; }
+  if (pickSending) return;
+  pickSending = true;
+  const customer = $('pickCust').value.trim();
+  const btn = $('pickForm').querySelector('[type=submit]'); btn.disabled = true; btn.textContent = '加入中…';
+  try {
+    applyShared(await repApi({ action: 'pickAdd', pick: { ...pickTarget, qty, customer } }));
+    if (!picksOk) throw Object.assign(new Error('Google 那邊的程式還沒更新，備料清單暫時不能用'), { code: 'old' });
+    if (customer) store.set('inv-customers', [customer, ...store.get('inv-customers', []).filter(c => c !== customer)].slice(0, 20));
+    $('pickDlg').close(); toast(`已加入${customer ? ` ${customer}` : ''}的備料`);
+  } catch (err) {
+    $('pickLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有加入：連不上網路，請有訊號時再按一次。')}</span>`;
+  } finally { pickSending = false; btn.disabled = false; btn.textContent = '加入'; }
+};
+async function pickAction(body, okMsg) {
+  try { applyShared(await repApi(body)); if (okMsg) toast(okMsg); }
+  catch (e) { toast(e.code ? e.message : '沒有網路，沒有改到，請等一下再試'); renderPick(); }
+}
 function renderPick() {
   if (!index || index.data !== data) buildIndex();
   const v = $('pickView');
-  if (!pick.length) {
-    v.innerHTML = `<div class="banner">備料清單是空的。在「查詢」找到東西後，按「＋ 加入備料」。</div>`;
-    return;
+  const head = `<div class="meta" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="flex:1">大家的備料，依客戶分組。備好打勾，清掉後就消失。${repState.loading ? '・更新中…' : ''}</span>
+      <button class="btn ghost" id="pickReload" style="padding:6px 12px">重新整理</button></div>`;
+  if (!picksOk) {
+    v.innerHTML = head + `<div class="banner warn"><b>Google 那邊的程式還沒更新。</b>請照說明在 Apps Script 貼上新程式並重新部署，備料清單才能用。</div>`;
+  } else if (!picks.length) {
+    v.innerHTML = head + `<div class="banner">備料清單是空的。在「查詢」找到東西後，按「＋ 加入備料」，填數量和客戶。</div>`;
+  } else {
+    const groups = new Map();
+    picks.forEach(p => { const k = p.customer || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
+    v.innerHTML = head + [...groups].map(([cust, list]) => {
+      const done = list.filter(p => p.done).length;
+      return `<div class="cgroup"><h3>${esc(cust || '未填客戶')}<span class="muted" style="color:var(--muted);font-size:13px;font-weight:400">　${list.length} 項，已備 ${done}</span></h3>
+        ${done ? `<button class="btn ghost small" data-clear="${esc(cust)}">清掉已備好的</button>` : ''}</div>` +
+        list.map(p => `
+        <article class="card pick ${p.done ? 'done' : ''}">
+          <input type="checkbox" data-done="${esc(p.id)}" ${p.done ? 'checked' : ''} aria-label="備好了">
+          <div class="body">
+            <div class="name">${esc(p.name)}</div>
+            <div class="code mono">${esc(p.code)}</div>
+            <div class="qtyline">要備 <b>${fmt(p.qty)}</b> 支/個</div>
+            <div class="meta" style="margin:2px 0 0">庫存：${esc(stockText(p.code))}</div>
+          </div>
+          <button class="del" data-del="${esc(p.id)}" aria-label="刪除這筆">×</button>
+        </article>`).join('');
+    }).join('') + `
+    <div class="actions"><button class="btn primary" id="copyPick">複製全部（貼到 LINE）</button></div>`;
+    v.querySelectorAll('[data-done]').forEach(c => c.onchange = () => {
+      const p = picks.find(x => x.id === c.dataset.done); if (p) { p.done = c.checked; savePicks(); renderPick(); }
+      pickAction({ action: 'pickSet', id: c.dataset.done, status: c.checked ? '已備' : '未備' });
+    });
+    v.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+      const id = b.dataset.del, p = picks.find(x => x.id === id); if (!p) return;
+      picks = picks.filter(x => x.id !== id); savePicks(); renderPick();
+      pickAction({ action: 'pickSet', id, status: '清掉' });
+      toast('已刪除', '復原', () => pickAction({ action: 'pickSet', id, status: p.done ? '已備' : '未備' }));
+    });
+    v.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => {
+      const cust = b.dataset.clear;
+      picks = picks.filter(x => !(x.done && (x.customer || '') === cust)); savePicks(); renderPick();
+      pickAction({ action: 'pickClearReady', customer: cust }, '已清掉備好的');
+    });
+    $('copyPick').onclick = async () => {
+      const text = '備料清單\n' + [...groups].map(([cust, list]) => `【${cust || '未填客戶'}】\n` +
+        list.map((p, i) => `${i + 1}. ${p.done ? '✅' : '⬜'} ${p.name}\n   ${p.code}　要備 ${fmt(p.qty)}`).join('\n')).join('\n\n');
+      try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
+      catch (e) { prompt('請長按複製：', text); }
+    };
   }
-  const done = pick.filter(p => p.done).length;
-  v.innerHTML = `<p class="meta">共 ${pick.length} 項，已備好 ${done} 項</p>` + pick.map((p, i) => `
-    <article class="card pick ${p.done ? 'done' : ''}">
-      <input type="checkbox" data-done="${i}" ${p.done ? 'checked' : ''} aria-label="備好了">
-      <div class="body">
-        <div class="name">${esc(p.name)}</div>
-        <div class="code mono">${esc(p.code)}</div>
-        <div class="meta" style="margin:4px 0 0">庫存：${esc(stockText(p.code))}</div>
-        <label class="need">要備 <input type="number" inputmode="numeric" min="0" data-need="${i}" value="${esc(p.need)}"> 支/個</label>
-      </div>
-      <button class="del" data-del="${i}" aria-label="移除">×</button>
-    </article>`).join('') + `
-    <div class="actions">
-      <button class="btn primary" id="copyPick">複製清單（貼到 LINE）</button>
-      <button class="btn ghost" id="clearDone">移除已備好的</button>
-      <button class="btn ghost" id="clearPick">全部清空</button>
-    </div>`;
-  v.querySelectorAll('[data-done]').forEach(c => c.onchange = () => { pick[c.dataset.done].done = c.checked; savePick(); renderPick(); });
-  v.querySelectorAll('[data-need]').forEach(c => c.oninput = () => { pick[c.dataset.need].need = c.value; savePick(); });
-  v.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { pick.splice(b.dataset.del, 1); savePick(); renderPick(); });
-  $('clearDone').onclick = () => { pick = pick.filter(p => !p.done); savePick(); renderPick(); };
-  $('clearPick').onclick = () => { if (confirm('確定清空備料清單？')) { pick = []; savePick(); renderPick(); } };
-  $('copyPick').onclick = async () => {
-    const lines = pick.map((p, i) => `${i + 1}. ${p.done ? '✅' : '⬜'} ${p.name}\n   ${p.code}${p.need ? `　要備 ${p.need}` : ''}\n   庫存：${stockText(p.code)}`);
-    const text = `備料清單（庫存資料 ${data.date}）\n` + lines.join('\n');
-    try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
-    catch (e) { prompt('請長按複製：', text); }
-  };
+  $('pickReload').onclick = () => loadReports(true);
 }
 
 /* ---------- 數量回報（大家共用，存在 Google 試算表） ---------- */
@@ -446,8 +538,14 @@ function saveReports() {
 async function repApi(body) {
   const r = await fetch(REPORT_API, { method: 'POST', body: JSON.stringify({ ...body, pass }) });
   const j = await r.json();
-  if (!j.ok) { const e = new Error(j.error === 'badpass' ? '回報的密碼和試算表裡的不一樣' : (j.error || '回報失敗')); e.code = j.error; throw e; }
-  return j.reports || [];
+  if (!j.ok) { const e = new Error(j.error === 'badpass' ? '密碼和試算表裡的不一樣' : (j.error || '失敗了')); e.code = j.error; throw e; }
+  return j;
+}
+// Google 回傳的回報與備料一起更新
+function applyShared(j) {
+  setReports(j.reports || []);
+  picksOk = Array.isArray(j.picks);
+  if (picksOk) setPicks(j.picks); else if (tab === 'pick') renderPick();
 }
 // 試算表會把「06」變成數字 6，這裡補回兩位數
 const fixWh = w => /^\d$/.test(String(w)) ? '0' + w : String(w);
@@ -458,10 +556,10 @@ function setReports(list) {
 async function loadReports(force) {
   if (!REPORT_API || !pass || repState.loading) return;
   if (!force && Date.now() - repState.at < 60000) return;   // 一分鐘內不重抓
-  repState.loading = true; if (tab === 'rep') renderReports();
-  try { setReports(await repApi({ action: 'list' })); }
+  repState.loading = true; if (tab === 'rep') renderReports(); else if (tab === 'pick') renderPick();
+  try { applyShared(await repApi({ action: 'list' })); }
   catch (e) { repState.error = e.code ? e.message : '連不上網路，顯示上次的回報'; }
-  finally { repState.loading = false; if (tab === 'rep') renderReports(); }
+  finally { repState.loading = false; if (tab === 'rep') renderReports(); else if (tab === 'pick') renderPick(); }
 }
 function diffHtml(r) {
   const d = r.actual - r.sys;
@@ -503,7 +601,7 @@ $('repForm').onsubmit = async e => {
   repSending = true;
   const btn = $('repForm').querySelector('[type=submit]'); btn.disabled = true; btn.textContent = '送出中…';
   try {
-    setReports(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: repReason, note: $('repNote').value.trim(), dataDate: data.date } }));
+    applyShared(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: repReason, note: $('repNote').value.trim(), dataDate: data.date } }));
     $('repDlg').close(); toast('已送出，大家都看得到了');
   } catch (err) {
     $('repLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有送出：連不上網路，請有訊號時再按一次。')}</span>`;
@@ -514,7 +612,7 @@ async function markDone(id, undo) {
   const gone = i >= 0 ? reports[i] : null;
   if (!undo && gone) { reports.splice(i, 1); saveReports(); renderReports(); }   // 先劃掉，畫面不用等
   try {
-    setReports(await repApi({ action: undo ? 'reopen' : 'done', id }));
+    applyShared(await repApi({ action: undo ? 'reopen' : 'done', id }));
     if (!undo) toast('已劃掉', '復原', () => markDone(id, true));
   } catch (e) {
     if (!undo && gone) { reports.splice(i, 0, gone); saveReports(); renderReports(); }
@@ -565,7 +663,7 @@ function setTab(t) {
   t === 'pick' ? renderPick() : t === 'rep' ? renderReports() : renderSearch();
 }
 $('tabSearch').onclick = () => setTab('search');
-$('tabPick').onclick = () => setTab('pick');
+$('tabPick').onclick = () => { setTab('pick'); loadReports(true); };
 $('tabRep').onclick = () => { setTab('rep'); loadReports(true); };
 let qTimer;
 $('q').oninput = () => { clearTimeout(qTimer); qTimer = setTimeout(() => { shown = PAGE; if (tab === 'search') renderSearch(); else setTab('search'); }, 120); };
@@ -576,7 +674,7 @@ function render() {
   $('mainView').hidden = !data;
   $('footSync').hidden = !data;
   renderHeader();
-  savePick(); saveReports();
+  savePicks(); saveReports();
   if (!data) return;
   renderChips();
   setTab(tab);
