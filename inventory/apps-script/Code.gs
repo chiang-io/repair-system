@@ -32,8 +32,8 @@ function doPost(e) {
     const sh = sheet_();
     if (req.action === 'add') {
       const r = req.report || {};
-      sh.appendRow([Utilities.getUuid().slice(0, 8), new Date(), str_(r.code), str_(r.name), str_(r.wh),
-        num_(r.sys), num_(r.actual), str_(r.reason), str_(r.note), str_(r.dataDate), OPEN, '']);
+      sh.appendRow([Utilities.getUuid().slice(0, 8), new Date(), text_(r.code), str_(r.name), text_(r.wh),
+        num_(r.sys), num_(r.actual), str_(r.reason), str_(r.note), text_(r.dataDate), OPEN, '']);
     } else if (req.action === 'done' || req.action === 'reopen') {
       const ids = sh.getRange(2, 1, Math.max(sh.getLastRow() - 1, 1), 1).getValues();
       const i = ids.findIndex(row => String(row[0]) === String(req.id));
@@ -58,7 +58,7 @@ function list_(sh) {
   return sh.getRange(2, 1, sh.getLastRow() - 1, COLS.length).getValues()
     .filter(r => r[0] && r[10] === OPEN)
     .map(r => ({ id: String(r[0]), at: r[1] instanceof Date ? r[1].toISOString() : String(r[1]),
-      code: String(r[2]), name: String(r[3]), wh: String(r[4]), sys: Number(r[5]), actual: Number(r[6]),
+      code: String(r[2]), name: String(r[3]), wh: String(r[4]).padStart(2, '0'), sys: Number(r[5]), actual: Number(r[6]),
       reason: String(r[7]), note: String(r[8]), dataDate: String(r[9]) }));
 }
 
@@ -67,5 +67,7 @@ function str_(v) {
   const s = String(v == null ? '' : v).slice(0, 200);
   return /^[=+\-@]/.test(s) ? "'" + s : s;
 }
+// 一定存成文字（例如倉別 06、日期 2026-11-24），不讓試算表自動轉成數字或日期
+function text_(v) { return "'" + String(v == null ? '' : v).slice(0, 200); }
 function num_(v) { const n = Number(v); return isFinite(n) ? n : ''; }
 function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }

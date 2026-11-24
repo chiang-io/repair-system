@@ -449,8 +449,10 @@ async function repApi(body) {
   if (!j.ok) { const e = new Error(j.error === 'badpass' ? '回報的密碼和試算表裡的不一樣' : (j.error || '回報失敗')); e.code = j.error; throw e; }
   return j.reports || [];
 }
+// 試算表會把「06」變成數字 6，這裡補回兩位數
+const fixWh = w => /^\d$/.test(String(w)) ? '0' + w : String(w);
 function setReports(list) {
-  reports = list; repState.error = ''; repState.at = Date.now(); saveReports();
+  reports = list.map(r => ({ ...r, wh: fixWh(r.wh) })); repState.error = ''; repState.at = Date.now(); saveReports();
   if (tab === 'search') renderSearch(); else if (tab === 'rep') renderReports();
 }
 async function loadReports(force) {
@@ -482,7 +484,7 @@ function openReport(code, wh) {
   $('repQty').value = ''; $('repNote').value = ''; $('repLive').textContent = '';
   repReason = REASONS[0]; renderReasons();
   $('repDlg').showModal();
-  setTimeout(() => $('repQty').focus(), 50);
+  $('repQty').focus();   // 在點擊當下就聚焦，iPhone 才會直接跳出鍵盤
 }
 function renderReasons() {
   $('repReason').innerHTML = REASONS.map(r => `<button type="button" class="chip" aria-pressed="${r === repReason}" data-r="${r}">${r}</button>`).join('');
@@ -538,7 +540,7 @@ function renderReports() {
         <div class="sub">${esc(r.wh)} ${esc(whLabel(r.wh))}</div>
         <div class="line">系統 ${fmt(r.sys)} → 實際 <b>${fmt(r.actual)}</b>（${diffHtml(r)}）</div>
         <div class="sub">原因：${esc(r.reason)}${r.note ? `　備註：${esc(r.note)}` : ''}</div>
-        <div class="sub">${when(r.at)} 回報・對照 ${esc(r.dataDate)} 報表</div>
+        <div class="sub">${when(r.at)} 回報</div>
       </div>
       <button class="del" data-rdel="${esc(r.id)}" aria-label="處理完，劃掉">✕</button>
     </article>`).join('') + `
@@ -546,7 +548,7 @@ function renderReports() {
     v.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => markDone(b.dataset.rdel));
     $('copyRep').onclick = async () => {
       const lines = list.map((r, i) => `${i + 1}. ${r.name}\n   ${r.code}　${r.wh}${whLabel(r.wh)}\n   系統 ${fmt(r.sys)} → 實際 ${fmt(r.actual)}（${r.actual - r.sys < 0 ? '少' : '多'} ${fmt(Math.abs(r.actual - r.sys))}）\n   原因：${r.reason}${r.note ? `，${r.note}` : ''}（${when(r.at)}）`);
-      const text = `庫存數量回報（對照 ${data.date} 報表）\n` + lines.join('\n');
+      const text = '庫存數量回報\n' + lines.join('\n');
       try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
       catch (e) { prompt('請長按複製：', text); }
     };
