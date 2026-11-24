@@ -60,24 +60,33 @@ python3 -m http.server 8000
 
 ## 庫存查詢（`inventory/`）
 
-網址：https://iop15159.github.io/repair-system/inventory/
+- 手機查詢：https://iop15159.github.io/repair-system/inventory/
+- 電腦上傳：https://iop15159.github.io/repair-system/inventory/upload.html
 
-給倉管在現場用手機查庫存：匯入 ERP 的「存貨異動統計表-分倉」，打品名或編號就列出各倉的結存數量。
+給倉管在現場用手機查庫存。電腦上傳 ERP 的「存貨異動統計表-分倉」，大家的手機自動同步；不需要 Claude 或任何付費服務。
 
-- 匯入：PDF（主要）或 Excel／CSV。PDF 依文字位置拆出產品編號、品名規格、結存數量、單重；Excel 依標題列（產品編號、品名、結存數量、單重、倉別）找欄位。
-- 資料只存在使用者的瀏覽器（localStorage），不會上傳，也不要把報表放進這個倉庫。
-- 預設只看 02 新品倉、06 五金倉，可切換其他倉；同一個編號在不同倉的數量合在同一張卡片。
-- 搜尋不分大小寫與全形半形，可打多段（例如「斜桿 1.8」）。
-- 顯示資料的列印日期，超過 7 天提醒；負數庫存標紅。
-- 備料清單：加入品項、填要備的數量、勾選已備好，可複製貼到 LINE。
-- 離線：`inventory/sw.js` 快取頁面與讀檔工具（jsDelivr 的 pdfjs-dist 3.11.174、xlsx 0.18.5），匯入後沒有網路也能查。
+### 更新資料（電腦）
+
+1. 打開上傳頁，選 PDF（或 Excel）。頁面會列出各倉品項數與結存合計，可和報表的「合計」比對。
+2. 輸入公司密碼（電腦會記住），按「下載資料檔」，得到加密的 `inventory-data.json`。
+3. 到 GitHub 的 `inventory/` 資料夾上傳頁（Add file → Upload files），把檔案拖進去，按 Commit changes。檔名必須是 `inventory-data.json`。
+4. 約 1～2 分鐘後 GitHub Pages 更新，手機打開或切回頁面時會自動抓新資料。
+
+### 說明
+
+- 這個倉庫是公開的，所以資料檔用公司密碼加密（PBKDF2-SHA256 20 萬次 + AES-256-GCM）；檔案裡只有日期與筆數是明碼。手機第一次要輸入密碼，之後記住。換密碼時，手機會先顯示舊資料並要求輸入新密碼。
+- 不要把原始報表（PDF、Excel）放進這個倉庫，只放加密後的 `inventory-data.json`。
+- 讀檔：PDF 依文字位置拆出產品編號、品名規格、結存數量、單重；Excel 依標題列（產品編號、品名、結存數量、單重、倉別）找欄位。程式在 `inventory/common.js`。
+- 查詢：預設只看 02 新品倉、06 五金倉，可切換其他倉；同一編號在不同倉的數量合在一張卡片；不分大小寫與全形半形，可打多段（例如「斜桿 1.8」）。資料超過 7 天提醒；負數庫存標紅。
+- 備料清單：加入品項、填要備的數量、勾選已備好，可複製貼到 LINE（只存在各自的手機）。
+- 離線：`inventory/sw.js` 快取頁面；資料解密後存在手機，沒有網路也能查。讀檔工具（jsDelivr 的 pdfjs-dist 3.11.174、xlsx 0.18.5）只有電腦上傳時才會下載。
 
 ## 檔案
 
 - `index.html`：貨櫃裝箱模擬頁面。
 - `icons/`、`manifest.webmanifest`：手機「加入主畫面」使用的圖示與名稱（貨櫃裝箱）。
 - `container-loading/index.html`：舊網址，自動轉到首頁。
-- `inventory/`：庫存查詢頁面（`index.html`、離線用的 `sw.js`、`manifest.webmanifest`、`icons/`）。
+- `inventory/`：庫存查詢。`index.html` 手機查詢、`upload.html` 電腦上傳、`common.js` 讀檔與加密、`sw.js` 離線、`inventory-data.json` 加密後的資料（由上傳產生，不要手動編輯）。
 - `sw.js`：清除舊版報修系統的離線快取並解除註冊，請勿刪除，直到確定沒有舊使用者。
 
 舊版報修登記系統的檔案已移除，可從 Git 歷史（commit `9d23908` 之前）找回。

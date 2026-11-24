@@ -119,16 +119,29 @@ footer .row.btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 
 <main class="wrap">
   <section id="emptyView" class="empty" hidden>
-    <h2>先匯入庫存報表</h2>
-    <p>匯入一次就會存在這支手機裡，沒有網路也能查。</p>
-    <ol class="steps">
-      <li>在 ERP 印出「存貨異動統計表-分倉」，存成 <b>PDF</b>（或匯出 Excel）。</li>
-      <li>把檔案傳到手機（LINE、Email 都可以）。</li>
-      <li>按下面的按鈕選那個檔案。</li>
-    </ol>
-    <button class="btn primary big" data-import>選擇報表檔案</button>
-    <p style="font-size:13px;margin-top:14px">資料只存在這個瀏覽器，不會上傳到任何地方。</p>
+    <div id="stLoading"><h2>讀取資料中…</h2></div>
+    <div id="stNone" hidden>
+      <h2>還沒有庫存資料</h2>
+      <p>請用<b>電腦</b>打開上傳頁面，上傳 ERP 的庫存報表：</p>
+      <p class="mono" style="word-break:break-all"><a id="uploadLink" href="upload.html">upload.html</a></p>
+      <p>上傳後大約 1～2 分鐘，這裡就會自動出現。</p>
+      <button class="btn" data-sync>重新檢查</button>
+    </div>
+    <div id="stOffline" hidden>
+      <h2>連不上網路</h2>
+      <p>第一次使用要有網路，才能下載庫存資料。之後沒網路也能查。</p>
+      <button class="btn" data-sync>再試一次</button>
+    </div>
   </section>
+
+  <form id="passBox" class="banner" hidden>
+    <b id="passTitle">輸入公司密碼</b>
+    <p id="passMsg" style="margin:4px 0 10px">庫存資料有加密。這支手機只要輸入一次，之後會記住。</p>
+    <div class="search">
+      <input id="passInput" type="password" autocomplete="current-password" placeholder="密碼" required>
+      <button class="btn primary" type="submit" style="padding:0 18px">確定</button>
+    </div>
+  </form>
 
   <section id="mainView" hidden>
     <div class="sticky">
@@ -149,22 +162,20 @@ footer .row.btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   </section>
 
   <footer>
-    <div class="row btns" id="footImport">
-      <button class="btn ghost" data-import>匯入新報表</button>
+    <div class="row btns" id="footSync">
+      <button class="btn ghost" data-sync>檢查有沒有新資料</button>
       <span id="fileInfo"></span>
     </div>
-    <div class="row">數量來自匯入的報表，<b>不是即時庫存</b>。負數表示帳上數量不對，請以現場為準。</div>
+    <div class="row">數量來自電腦上傳的 ERP 報表，<b>不是即時庫存</b>。負數表示帳上數量不對，請以現場為準。</div>
+    <div class="row">新的報表請用電腦上傳：<a href="upload.html">上傳頁面</a></div>
     <div class="row"><a href="../">← 貨櫃裝箱模擬</a></div>
   </footer>
 </main>
-<input type="file" id="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" hidden>
 <div class="toast" id="toast" hidden></div>
 
+<script src="common.js"></script>
 <script>
 'use strict';
-const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
-const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
 const MAIN_WH = ['02', '06'];          // 倉管常用：02 新品倉、06 五金倉
 const PAGE = 60;                        // 一次顯示幾張卡片
 const $ = id => document.getElementById(id);
@@ -174,7 +185,8 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } },
 };
-let data = store.get('inv-data', null);     // {date, dateSource, file, importedAt, wh:{code:name}, rows:[[wh,code,name,qty,wt]]}
+let data = store.get('inv-data', null);     // {date, dateSource, file, uploadedAt, wh:{code:name}, rows:[[wh,code,name,qty,wt]]}
+let pass = store.get('inv-pass', null);     // 公司密碼（只存在這支手機）
 let pick = store.get('inv-pick', []);       // [{code, name, need, done}]
 let whSel = store.get('inv-wh', null);      // 選了哪些倉；null = 預設
 let shown = PAGE;
@@ -188,164 +200,11 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 // 搜尋用：全形轉半形、大小寫、×→x、去空白
 const norm = s => String(s).normalize('NFKC').toLowerCase().replace(/[×*＊]/g, 'x').replace(/[Φø]/g, 'φ').replace(/\s+/g, '');
 const fmt = n => n == null ? '' : Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
-function loadScript(src) {
-  return new Promise((ok, fail) => {
-    if (document.querySelector(`script[src="${src}"]`)) return ok();
-    const s = document.createElement('script'); s.src = src; s.onload = ok;
-    s.onerror = () => fail(new Error('載入失敗：' + src)); document.head.appendChild(s);
-  });
-}
 function daysAgo(iso) {
   if (!iso) return null;
   const d = new Date(iso + 'T00:00:00'); const now = new Date(); now.setHours(0, 0, 0, 0);
   return Math.round((now - d) / 86400000);
 }
-
-/* ---------- 解析：PDF（存貨異動統計表-分倉） ---------- */
-// 一頁的文字依 y 座標分行，每行依 x 排序。
-// 每行第一段是產品編號；右邊的數字依位置分成「結存數量」與「單重」；其餘是品名規格。
-function parseReportPages(pages) {
-  const rows = [], whNames = {}; let wh = null, date = null, cols = null, skipped = 0;
-  for (const items of pages) {
-    const lines = [];
-    for (const it of items) {
-      if (!it.str.trim()) continue;
-      let L = lines.find(l => Math.abs(l.y - it.y) <= 2);
-      if (!L) { L = { y: it.y, items: [] }; lines.push(L); }
-      L.items.push(it);
-    }
-    lines.sort((a, b) => b.y - a.y); lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
-    let inBody = false;
-    for (const l of lines) {
-      const text = l.items.map(i => i.str).join(' ').replace(/\s+/g, ' ');
-      let m;
-      if ((m = text.match(/列印日期\s*[:：]\s*(\d{4})\/(\d{1,2})\/(\d{1,2})/)))
-        date = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
-      if ((m = text.match(/倉庫名稱\s*[:：]\s*(.+?)\s*[(（]\s*([0-9A-Za-z]+)\s*[)）]/))) {
-        wh = m[2]; whNames[wh] = m[1].trim(); continue;
-      }
-      if (/產品編號/.test(text) && /品名/.test(text)) {
-        const f = re => l.items.find(i => re.test(i.str));
-        const q = f(/結存|數量/), w = f(/單重/);
-        cols = { qtyX: q ? q.x : 430, wtX: w ? w.x : 510 }; inBody = true; continue;
-      }
-      if (!inBody || !cols || /合\s*計|總\s*計/.test(text)) continue;
-      const first = l.items[0];
-      if (!/^[A-Za-z0-9]/.test(first.str.trim())) { skipped++; continue; }
-      let qty = null, wt = null, name = '', prevEnd = null;
-      for (const it of l.items.slice(1)) {
-        const s = it.str.trim(), right = it.x + it.w;
-        if (/^-?[\d,]+(\.\d+)?$/.test(s) && right > cols.qtyX) {
-          const v = parseFloat(s.replace(/,/g, ''));
-          if (right > cols.wtX) wt = v; else qty = v;
-        } else {
-          // 兩段字之間有明顯空隙才補空白（pdf.js 會把中英文切成好幾段）
-          name += (prevEnd != null && it.x - prevEnd > 3 ? ' ' : '') + s;
-          prevEnd = right;
-        }
-      }
-      if (qty === null) { skipped++; continue; }
-      rows.push([wh || '?', first.str.trim(), name.replace(/\s+/g, ' ').trim(), qty, wt]);
-    }
-  }
-  return { rows, whNames, date, skipped };
-}
-async function readPdf(buf) {
-  await loadScript(PDFJS);
-  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
-  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
-  const pages = [];
-  for (let p = 1; p <= doc.numPages; p++) {
-    const tc = await (await doc.getPage(p)).getTextContent();
-    pages.push(tc.items.map(i => ({ str: i.str, x: i.transform[4], y: i.transform[5], w: i.width })));
-  }
-  return parseReportPages(pages);
-}
-
-/* ---------- 解析：Excel／CSV ---------- */
-// 找標題列（有「編號」和「品名」的那一列）決定欄位；
-// 支援報表式（「倉庫名稱:新品倉 (02)」分段）與表格式（有「倉別」欄）。
-function parseSheetRows(allRows) {
-  const rows = [], whNames = {}; let wh = null, date = null, col = null, skipped = 0;
-  const find = (cells, re) => cells.findIndex(c => re.test(String(c).replace(/\s+/g, '')));
-  for (const raw of allRows) {
-    const cells = raw.map(c => c == null ? '' : String(c).trim());
-    const text = cells.join(' ');
-    if (!text.trim()) continue;
-    let m;
-    if ((m = text.match(/列印日期\s*[:：]?\s*(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/)))
-      date = `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
-    if ((m = text.match(/倉庫名稱\s*[:：]?\s*(.+?)\s*[(（]\s*([0-9A-Za-z]+)\s*[)）]/))) {
-      wh = m[2]; whNames[wh] = m[1].trim(); continue;
-    }
-    const iCode = find(cells, /^(產品編號|產品代號|料號|品號|編號)$/), iName = find(cells, /品名/);
-    if (iCode >= 0 && iName >= 0) {
-      col = {
-        code: iCode, name: iName,
-        spec: find(cells, /^規格$/),
-        qty: find(cells, /結存|庫存數|現有|數量/),
-        wt: find(cells, /單重/),
-        wh: find(cells, /^(倉別|倉庫|倉庫代號|倉庫名稱)$/),
-      };
-      continue;
-    }
-    if (!col || /合\s*計|總\s*計/.test(text)) continue;
-    const code = cells[col.code];
-    if (!code || !/^[A-Za-z0-9]/.test(code)) { skipped++; continue; }
-    const num = v => { const n = parseFloat(String(v).replace(/,/g, '')); return isNaN(n) ? null : n; };
-    const qty = col.qty >= 0 ? num(cells[col.qty]) : null;
-    if (qty === null) { skipped++; continue; }
-    let w = wh;
-    if (col.wh >= 0 && cells[col.wh]) {
-      const v = cells[col.wh], mm = v.match(/\d+/);
-      w = mm ? mm[0].padStart(2, '0') : v;
-      const nm = v.replace(/[(（]?\s*\d+\s*[)）]?/, '').trim();
-      if (nm && !whNames[w]) whNames[w] = nm;
-    }
-    const name = [cells[col.name], col.spec >= 0 ? cells[col.spec] : ''].filter(Boolean).join(' ');
-    rows.push([w || '?', code, name, qty, col.wt >= 0 ? num(cells[col.wt]) : null]);
-  }
-  return { rows, whNames, date, skipped };
-}
-async function readSheet(buf) {
-  await loadScript(XLSX_URL);
-  const wb = XLSX.read(buf, { type: 'array' });
-  let all = [];
-  for (const n of wb.SheetNames) all = all.concat(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }));
-  return parseSheetRows(all);
-}
-
-/* ---------- 匯入 ---------- */
-document.querySelectorAll('[data-import]').forEach(b => b.onclick = () => $('file').click());
-$('file').onchange = async e => {
-  const f = e.target.files[0]; e.target.value = '';
-  if (!f) return;
-  toast('讀取中…');
-  try {
-    const buf = new Uint8Array(await f.arrayBuffer());
-    const isPdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
-    const r = isPdf ? await readPdf(buf) : await readSheet(buf);
-    if (!r.rows.length) {
-      alert('這個檔案裡找不到庫存資料。\n\n請確認是「存貨異動統計表-分倉」，而且要有「產品編號」「品名」「結存數量」這幾欄。');
-      return;
-    }
-    const fileDate = new Date(f.lastModified || Date.now());
-    const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    const next = {
-      date: r.date || iso(fileDate), dateSource: r.date ? '列印日期' : '檔案日期',
-      file: f.name, importedAt: iso(new Date()), wh: r.whNames, rows: r.rows,
-    };
-    const counts = {}; r.rows.forEach(x => counts[x[0]] = (counts[x[0]] || 0) + 1);
-    const summary = Object.keys(counts).sort().map(k => `${k} ${r.whNames[k] || ''}：${counts[k]} 筆`).join('\n');
-    if (!confirm(`讀到 ${r.rows.length} 筆（資料日期 ${next.date}）\n\n${summary}${r.skipped ? `\n\n有 ${r.skipped} 行看不懂，已略過。` : ''}\n\n要用這份取代目前的資料嗎？`)) return;
-    data = next;
-    if (!store.set('inv-data', data)) alert('這個瀏覽器不能儲存（例如無痕模式），這次可以查，但關掉後要重新匯入。');
-    shown = PAGE; render(); toast('匯入完成');
-  } catch (err) {
-    console.error(err);
-    alert('讀取失敗：' + err.message + '\n\n第一次匯入需要網路（要下載讀檔工具）。');
-  }
-};
 
 /* ---------- 畫面 ---------- */
 function whList() {
@@ -364,7 +223,7 @@ function renderHeader() {
   if (!data) { box.hidden = true; return; }
   box.hidden = false;
   box.innerHTML = `<b>${esc(data.date)}</b>${esc(data.dateSource)}`;
-  $('fileInfo').textContent = `目前：${data.file}（${data.rows.length} 筆，${data.importedAt} 匯入）`;
+  $('fileInfo').textContent = `目前：${data.rows.length} 筆，${fmtTime(data.uploadedAt)} 上傳`;
   const d = daysAgo(data.date);
   $('staleBox').innerHTML = d != null && d >= 7
     ? `<div class="banner warn"><b>資料是 ${d} 天前的。</b>數量可能已經變了，有空請匯入新的報表。</div>` : '';
@@ -534,14 +393,78 @@ $('clearQ').onclick = () => { $('q').value = ''; $('q').focus(); shown = PAGE; s
 function render() {
   $('emptyView').hidden = !!data;
   $('mainView').hidden = !data;
-  $('footImport').hidden = !data;
+  $('footSync').hidden = !data;
   renderHeader();
   savePick();
   if (!data) return;
   renderChips();
   setTab($('pickView').hidden ? 'search' : 'pick');
 }
+function emptyState(which) {
+  ['stLoading', 'stNone', 'stOffline'].forEach(id => $(id).hidden = id !== which);
+}
+const fmtTime = iso => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d) ? iso : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+
+/* ---------- 同步：從網站抓電腦上傳的加密資料檔 ---------- */
+let pending = null, syncing = false, lastSync = 0;
+function askPass(msg) {
+  $('passBox').hidden = false;
+  $('passTitle').textContent = data ? '有新資料，需要密碼' : '輸入公司密碼';
+  $('passMsg').textContent = msg || '庫存資料有加密。這支手機只要輸入一次，之後會記住。';
+  if (!data) emptyState(null);
+}
+async function applyFile(file, pw) {
+  const d = await decryptData(file, pw);
+  const isUpdate = !!data && data.date !== d.date;
+  data = d; pass = pw;
+  if (!store.set('inv-data', data)) toast('這個瀏覽器不能儲存（例如無痕模式），關掉後要重新下載。');
+  store.set('inv-pass', pass);
+  index = null; shown = PAGE; pending = null; $('passBox').hidden = true;
+  render();
+  if (isUpdate) toast(`已更新到 ${d.date} 的資料`);
+}
+async function sync(manual) {
+  if (syncing) return; syncing = true; lastSync = Date.now();
+  try {
+    let file = null;
+    try {
+      const r = await fetch(`${DATA_FILE}?t=${Date.now()}`, { cache: 'no-store' });
+      if (r.ok) file = await r.json();
+      else if (r.status !== 404) throw new Error(r.status);
+    } catch (e) {
+      if (!data) emptyState('stOffline'); else if (manual) toast('連不上網路，先用手機裡的資料');
+      return;
+    }
+    if (!file) { if (!data) emptyState('stNone'); else if (manual) toast('網站上沒有資料檔'); return; }
+    if (data && data.uploadedAt === file.uploadedAt) { if (manual) toast('已經是最新的資料'); return; }
+    if (!pass) { pending = file; askPass(); return; }
+    try { await applyFile(file, pass); if (manual && data.uploadedAt === file.uploadedAt) toast('已經是最新的資料'); }
+    catch (e) {
+      pending = file;
+      askPass(e.badPassword ? (data ? '密碼可能換了，請輸入新密碼。在輸入之前，仍然顯示舊的資料。' : '') : '資料檔讀不出來：' + e.message);
+    }
+  } finally { syncing = false; }
+}
+$('passBox').onsubmit = async e => {
+  e.preventDefault();
+  const pw = $('passInput').value;
+  if (!pw || !pending) return;
+  try { await applyFile(pending, pw); $('passInput').value = ''; toast('密碼正確，已記住'); }
+  catch (err) { $('passMsg').textContent = err.badPassword ? '密碼不對，請再試一次。' : '資料檔讀不出來：' + err.message; $('passInput').select(); }
+};
+document.querySelectorAll('[data-sync]').forEach(b => b.onclick = () => { if (!data) emptyState('stLoading'); sync(true); });
+// 回到這個畫面時（例如從 LINE 切回來）自動檢查，最多 5 分鐘一次
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - lastSync > 300000) sync(false); });
+$('uploadLink').textContent = new URL('upload.html', location.href).href;
+$('uploadLink').href = 'upload.html';
+
 render();
+if (!data) emptyState('stLoading');
+sync(false);
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
