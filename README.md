@@ -2,7 +2,7 @@
 
 單頁網頁工具：選擇櫃型、填寫貨物清單，計算擺放位置並以 3D 逐件播放裝載順序。
 
-網址：https://iop15159.github.io/repair-system/
+網址：https://chiang-io.github.io/repair-system/
 
 ## 功能
 
@@ -61,8 +61,8 @@ python3 -m http.server 8000
 
 ## 庫存查詢（`inventory/`）
 
-- 手機查詢：https://iop15159.github.io/repair-system/inventory/
-- 電腦上傳：https://iop15159.github.io/repair-system/inventory/upload.html
+- 手機查詢：https://chiang-io.github.io/repair-system/inventory/
+- 電腦上傳：https://chiang-io.github.io/repair-system/inventory/upload.html
 
 給倉管在現場用手機查庫存。電腦上傳 ERP 的「存貨異動統計表-分倉」，大家的手機自動同步；不需要 Claude 或任何付費服務。
 
