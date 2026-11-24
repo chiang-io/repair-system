@@ -58,11 +58,26 @@ python3 -m http.server 8000
 
 再開啟 http://localhost:8000/ 。
 
+## 庫存查詢（`inventory/`）
+
+網址：https://iop15159.github.io/repair-system/inventory/
+
+給倉管在現場用手機查庫存：匯入 ERP 的「存貨異動統計表-分倉」，打品名或編號就列出各倉的結存數量。
+
+- 匯入：PDF（主要）或 Excel／CSV。PDF 依文字位置拆出產品編號、品名規格、結存數量、單重；Excel 依標題列（產品編號、品名、結存數量、單重、倉別）找欄位。
+- 資料只存在使用者的瀏覽器（localStorage），不會上傳，也不要把報表放進這個倉庫。
+- 預設只看 02 新品倉、06 五金倉，可切換其他倉；同一個編號在不同倉的數量合在同一張卡片。
+- 搜尋不分大小寫與全形半形，可打多段（例如「斜桿 1.8」）。
+- 顯示資料的列印日期，超過 7 天提醒；負數庫存標紅。
+- 備料清單：加入品項、填要備的數量、勾選已備好，可複製貼到 LINE。
+- 離線：`inventory/sw.js` 快取頁面與讀檔工具（jsDelivr 的 pdfjs-dist 3.11.174、xlsx 0.18.5），匯入後沒有網路也能查。
+
 ## 檔案
 
 - `index.html`：貨櫃裝箱模擬頁面。
 - `icons/`、`manifest.webmanifest`：手機「加入主畫面」使用的圖示與名稱（貨櫃裝箱）。
 - `container-loading/index.html`：舊網址，自動轉到首頁。
+- `inventory/`：庫存查詢頁面（`index.html`、離線用的 `sw.js`、`manifest.webmanifest`、`icons/`）。
 - `sw.js`：清除舊版報修系統的離線快取並解除註冊，請勿刪除，直到確定沒有舊使用者。
 
 舊版報修登記系統的檔案已移除，可從 Git 歷史（commit `9d23908` 之前）找回。
