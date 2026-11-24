@@ -52,6 +52,8 @@ header .date b{display:block;font-size:14px;opacity:1}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .chip{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:14px;line-height:1.3}
 .chip[aria-pressed="true"]{background:var(--steel);border-color:var(--steel);color:#fff}
+.chip.clear{border-color:var(--bad);color:var(--bad);background:transparent;font-weight:500}
+.allnote{align-self:center;color:var(--muted);font-size:13px;padding:0 4px}
 .tabs{display:flex;gap:6px;margin-top:10px}
 .tab{flex:1;border:none;border-radius:10px;padding:9px;background:var(--sunk);font-weight:500;font-size:15px}
 .tab[aria-selected="true"]{background:var(--accent);color:var(--accent-ink);font-weight:700}
@@ -176,7 +178,10 @@ footer .row.btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 <script src="common.js"></script>
 <script>
 'use strict';
-const MAIN_WH = ['02', '06'];          // 倉管常用：02 新品倉、06 五金倉
+const MAIN_WH = ['02', '06'];          // 倉管常用：02 新品倉、06 五金倉（第一次打開預設選這兩個）
+const WH_ORDER = ['01', '02', '03', '06', '04'];   // 倉別按鈕與卡片裡的排列順序；其他倉排在後面
+const whRank = w => { const i = WH_ORDER.indexOf(w); return i < 0 ? WH_ORDER.length : i; };
+const whCmp = (a, b) => (whRank(a) - whRank(b)) || a.localeCompare(b);
 const PAGE = 60;                        // 一次顯示幾張卡片
 const $ = id => document.getElementById(id);
 
@@ -209,12 +214,17 @@ function daysAgo(iso) {
 /* ---------- 畫面 ---------- */
 function whList() {
   const s = new Set(data.rows.map(r => r[0]));
-  return [...s].sort((a, b) => (MAIN_WH.includes(b) - MAIN_WH.includes(a)) || a.localeCompare(b));
+  return [...s].sort(whCmp);
 }
-function selectedWh() {
+// 使用者點選的倉（可以一個都沒選）；第一次打開預設 02、06
+function pickedWh() {
   const all = whList();
-  const sel = (whSel || MAIN_WH).filter(w => all.includes(w));
-  return sel.length ? sel : all;
+  return (whSel || MAIN_WH).filter(w => all.includes(w));
+}
+// 實際要查的倉：沒選任何倉 = 全部倉
+function selectedWh() {
+  const p = pickedWh();
+  return p.length ? p : whList();
 }
 function whLabel(w) { return (data.wh && data.wh[w]) || ''; }
 
@@ -229,18 +239,19 @@ function renderHeader() {
     ? `<div class="banner warn"><b>資料是 ${d} 天前的。</b>數量可能已經變了，有空請匯入新的報表。</div>` : '';
 }
 function renderChips() {
-  const all = whList(), sel = selectedWh();
-  const allOn = sel.length === all.length;
+  const all = whList(), picked = pickedWh();
   $('chips').innerHTML = all.map(w =>
-    `<button class="chip" data-wh="${esc(w)}" aria-pressed="${sel.includes(w)}">${esc(w)} ${esc(whLabel(w))}</button>`).join('')
-    + `<button class="chip" data-wh="*" aria-pressed="${allOn}">全部倉</button>`;
+    `<button class="chip" data-wh="${esc(w)}" aria-pressed="${picked.includes(w)}">${esc(w)} ${esc(whLabel(w))}</button>`).join('')
+    + (picked.length
+      ? `<button class="chip clear" data-wh="-">✕ 清除</button>`
+      : `<span class="allnote">沒選＝查全部倉</span>`);
   $('chips').querySelectorAll('.chip').forEach(b => b.onclick = () => {
     const w = b.dataset.wh;
-    if (w === '*') whSel = allOn ? MAIN_WH.slice() : all.slice();
+    if (w === '-') whSel = [];
     else {
-      const s = new Set(selectedWh());
+      const s = new Set(picked);
       s.has(w) ? s.delete(w) : s.add(w);
-      whSel = s.size ? [...s] : [w];
+      whSel = [...s];
     }
     store.set('inv-wh', whSel); shown = PAGE; renderChips(); renderSearch();
   });
@@ -259,7 +270,7 @@ function buildIndex() {
   }
   for (const g of byCode.values()) {
     g.hay = norm(g.code + ' ' + g.name); g.ncode = norm(g.code);
-    g.stock.sort((a, b) => (MAIN_WH.includes(b.wh) - MAIN_WH.includes(a.wh)) || a.wh.localeCompare(b.wh));
+    g.stock.sort((a, b) => whCmp(a.wh, b.wh));
   }
   index = { data, groups: [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code)) };
 }
@@ -303,7 +314,7 @@ function renderSearch() {
   const view = $('searchView');
   if (!tokens.length) {
     const n = index.groups.filter(g => g.stock.some(s => sel.includes(s.wh))).length;
-    view.innerHTML = `<p class="meta">目前選的倉共有 ${n} 種品項。在上面打品名或編號開始找；可以打好幾段，用空白分開，例如「斜桿 1.8」「SB-BD」「螺絲 M6」。</p>`;
+    view.innerHTML = `<p class="meta">${pickedWh().length ? '目前選的倉' : '全部倉'}共有 ${n} 種品項。在上面打品名或編號開始找；可以打好幾段，用空白分開，例如「斜桿 1.8」「SB-BD」「螺絲 M6」。</p>`;
     return;
   }
   const hit = index.groups.filter(g => tokens.every(t => g.hay.includes(t)));
@@ -322,7 +333,7 @@ function renderSearch() {
   else if (outside && inSel.length) html += `<button class="more" id="showAll">其他倉還有 ${outside} 種，看全部倉</button>`;
   view.innerHTML = html;
   const more = $('more'); if (more) more.onclick = () => { shown += PAGE; renderSearch(); };
-  const sa = $('showAll'); if (sa) sa.onclick = () => { whSel = whList(); store.set('inv-wh', whSel); renderChips(); renderSearch(); };
+  const sa = $('showAll'); if (sa) sa.onclick = () => { whSel = []; store.set('inv-wh', whSel); renderChips(); renderSearch(); };
   view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => togglePick(b.dataset.add));
 }
 
