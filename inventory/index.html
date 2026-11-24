@@ -209,12 +209,13 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
     <input id="repNote" type="text" placeholder="例如：A 區架上只有 3 包">
     <div class="btnrow">
       <button class="btn ghost" type="button" id="repCancel">取消</button>
-      <button class="btn primary" type="submit">記下來</button>
+      <button class="btn primary" type="submit">送出</button>
     </div>
   </form>
 </dialog>
 
 <script src="common.js"></script>
+<script src="config.js"></script>
 <script>
 'use strict';
 const MAIN_WH = ['02', '06'];          // 倉管常用：02 新品倉、06 五金倉（第一次打開預設選這兩個）
@@ -232,7 +233,8 @@ const store = {
 let data = store.get('inv-data', null);     // {date, dateSource, file, uploadedAt, wh:{code:name}, rows:[[wh,code,name,qty,wt]]}
 let pass = store.get('inv-pass', null);     // 公司密碼（只存在這支手機）
 let pick = store.get('inv-pick', []);       // [{code, name, need, done}]
-let reports = store.get('inv-reports', []); // 數量回報（只存在這支手機）：[{id, code, name, wh, sys, actual, reason, note, at, dataDate}]
+let reports = store.get('inv-reports-shared', []); // 共用回報（未處理的），先用上次抓到的顯示：[{id, code, name, wh, sys, actual, reason, note, at, dataDate}]
+const repState = { loading: false, error: '', at: 0 };
 let tab = 'search';
 let whSel = store.get('inv-wh', null);      // 選了哪些倉；null = 預設
 let shown = PAGE;
@@ -341,7 +343,7 @@ function cardHtml(g, sel, tokens) {
       <div class="srow">
         <div class="wh ${MAIN_WH.includes(s.wh) ? 'main' : ''}"><span class="no mono">${esc(s.wh)}</span>${esc(whLabel(s.wh))}</div>
         <div class="qty ${s.qty < 0 ? 'neg' : s.qty === 0 ? 'zero' : ''}">${fmt(s.qty)}<small>支/個</small></div>
-        <button class="rep" data-rep="${esc(g.code)}" data-wh="${esc(s.wh)}">回報</button>
+        ${REPORT_API ? `<button class="rep" data-rep="${esc(g.code)}" data-wh="${esc(s.wh)}">回報</button>` : ''}
       </div>${repNoteHtml(g.code, s.wh)}`).join('')}
       ${neg ? '<div class="negnote">帳上是負數，實際數量請以現場為準。</div>' : ''}
       <div class="srow">
@@ -434,27 +436,49 @@ function renderPick() {
   };
 }
 
-/* ---------- 數量回報（只存在這支手機） ---------- */
+/* ---------- 數量回報（大家共用，存在 Google 試算表） ---------- */
 const REASONS = ['備貨拿走', '放到別的地方', '帳錯了', '不知道'];
-function saveReports() { store.set('inv-reports', reports); $('repCount').textContent = reports.length ? `(${reports.length})` : ''; }
+function saveReports() {
+  store.set('inv-reports-shared', reports);
+  $('repCount').textContent = reports.length ? `(${reports.length})` : '';
+  $('tabRep').hidden = !REPORT_API;
+}
+async function repApi(body) {
+  const r = await fetch(REPORT_API, { method: 'POST', body: JSON.stringify({ ...body, pass }) });
+  const j = await r.json();
+  if (!j.ok) { const e = new Error(j.error === 'badpass' ? '回報的密碼和試算表裡的不一樣' : (j.error || '回報失敗')); e.code = j.error; throw e; }
+  return j.reports || [];
+}
+function setReports(list) {
+  reports = list; repState.error = ''; repState.at = Date.now(); saveReports();
+  if (tab === 'search') renderSearch(); else if (tab === 'rep') renderReports();
+}
+async function loadReports(force) {
+  if (!REPORT_API || !pass || repState.loading) return;
+  if (!force && Date.now() - repState.at < 60000) return;   // 一分鐘內不重抓
+  repState.loading = true; if (tab === 'rep') renderReports();
+  try { setReports(await repApi({ action: 'list' })); }
+  catch (e) { repState.error = e.code ? e.message : '連不上網路，顯示上次的回報'; }
+  finally { repState.loading = false; if (tab === 'rep') renderReports(); }
+}
 function diffHtml(r) {
   const d = r.actual - r.sys;
   if (d === 0) return '<span class="diff">一樣</span>';
   return `<span class="diff ${d < 0 ? 'd-less' : 'd-more'}">${d < 0 ? '少' : '多'} ${fmt(Math.abs(d))}</span>`;
 }
-const when = iso => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function repNoteHtml(code, wh) {
   const r = reports.filter(x => x.code === code && x.wh === wh).pop();
-  return r ? `<div class="repnote">⚠ 你回報過：實際 ${fmt(r.actual)}（${diffHtml(r)}，${when(r.at)}）</div>` : '';
+  return r ? `<div class="repnote">⚠ 有人回報：實際 ${fmt(r.actual)}（${diffHtml(r)}，${when(r.at)}）</div>` : '';
 }
-let repTarget = null, repReason = REASONS[0];
+let repTarget = null, repReason = REASONS[0], repSending = false;
 function openReport(code, wh) {
   const g = index.groups.find(x => x.code === code); if (!g) return;
   const st = g.stock.find(s => s.wh === wh); if (!st) return;
   repTarget = { code, name: g.name, wh, sys: st.qty };
   $('repName').textContent = g.name;
   $('repCode').textContent = `${code}　${wh} ${whLabel(wh)}`;
-  $('repSys').innerHTML = `系統數量：<b>${fmt(st.qty)}</b>　<span class="muted" style="color:var(--muted);font-size:13px">（${esc(data.date)} 報表）</span>`;
+  $('repSys').innerHTML = `系統數量：<b>${fmt(st.qty)}</b>　<span style="color:var(--muted);font-size:13px">（${esc(data.date)} 報表）</span>`;
   $('repQty').value = ''; $('repNote').value = ''; $('repLive').textContent = '';
   repReason = REASONS[0]; renderReasons();
   $('repDlg').showModal();
@@ -469,23 +493,44 @@ $('repQty').oninput = () => {
   $('repLive').innerHTML = isNaN(v) || !repTarget ? '' : `和系統相比：${diffHtml({ actual: v, sys: repTarget.sys })}`;
 };
 $('repCancel').onclick = () => $('repDlg').close();
-$('repForm').onsubmit = e => {
+$('repForm').onsubmit = async e => {
+  e.preventDefault();
   const v = parseFloat($('repQty').value);
-  if (isNaN(v) || !repTarget) { e.preventDefault(); $('repQty').focus(); return; }
-  reports.push({ id: Date.now().toString(36), ...repTarget, actual: v, reason: repReason,
-    note: $('repNote').value.trim(), at: new Date().toISOString(), dataDate: data.date });
-  saveReports(); toast('已記下來，在「回報」分頁可以看到');
-  if (tab === 'search') renderSearch();
+  if (isNaN(v) || !repTarget) { $('repQty').focus(); return; }
+  if (repSending) return;
+  repSending = true;
+  const btn = $('repForm').querySelector('[type=submit]'); btn.disabled = true; btn.textContent = '送出中…';
+  try {
+    setReports(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: repReason, note: $('repNote').value.trim(), dataDate: data.date } }));
+    $('repDlg').close(); toast('已送出，大家都看得到了');
+  } catch (err) {
+    $('repLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有送出：連不上網路，請有訊號時再按一次。')}</span>`;
+  } finally { repSending = false; btn.disabled = false; btn.textContent = '送出'; }
 };
+async function markDone(id, undo) {
+  const i = reports.findIndex(r => r.id === id);
+  const gone = i >= 0 ? reports[i] : null;
+  if (!undo && gone) { reports.splice(i, 1); saveReports(); renderReports(); }   // 先劃掉，畫面不用等
+  try {
+    setReports(await repApi({ action: undo ? 'reopen' : 'done', id }));
+    if (!undo) toast('已劃掉', '復原', () => markDone(id, true));
+  } catch (e) {
+    if (!undo && gone) { reports.splice(i, 0, gone); saveReports(); renderReports(); }
+    toast(e.code ? e.message : '沒有網路，沒有劃掉，請等一下再試');
+  }
+}
 function renderReports() {
   if (!index || index.data !== data) buildIndex();
   const v = $('repView');
+  const status = repState.loading ? '更新中…' : repState.error ? `<span style="color:var(--bad)">${esc(repState.error)}</span>` : repState.at ? `${when(new Date(repState.at).toISOString())} 更新` : '';
+  const head = `<div class="meta" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span style="flex:1">大家的回報，處理完按 ✕ 劃掉。${status ? '・' + status : ''}</span>
+      <button class="btn ghost" id="repReload" style="padding:6px 12px">重新整理</button></div>`;
   if (!reports.length) {
-    v.innerHTML = `<div class="banner">沒有回報。查詢時發現數量不對，在那個倉的數量旁邊按「回報」。</div>`;
-    return;
-  }
-  const list = reports.slice().reverse();
-  v.innerHTML = `<p class="meta">共 ${reports.length} 筆，處理完按 ✕ 就會消失。只存在這支手機。</p>` + list.map(r => `
+    v.innerHTML = head + `<div class="banner">${repState.loading && !repState.at ? '讀取中…' : '目前沒有回報。查詢時發現數量不對，在那個倉的數量旁邊按「回報」。'}</div>`;
+  } else {
+    const list = reports.slice().reverse();
+    v.innerHTML = head + list.map(r => `
     <article class="card pick rcard">
       <div class="body">
         <div class="name">${esc(r.name)}</div>
@@ -495,20 +540,18 @@ function renderReports() {
         <div class="sub">原因：${esc(r.reason)}${r.note ? `　備註：${esc(r.note)}` : ''}</div>
         <div class="sub">${when(r.at)} 回報・對照 ${esc(r.dataDate)} 報表</div>
       </div>
-      <button class="del" data-rdel="${esc(r.id)}" aria-label="處理完，刪除">✕</button>
+      <button class="del" data-rdel="${esc(r.id)}" aria-label="處理完，劃掉">✕</button>
     </article>`).join('') + `
     <div class="actions"><button class="btn primary" id="copyRep">複製全部（貼到 LINE）</button></div>`;
-  v.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => {
-    const i = reports.findIndex(r => r.id === b.dataset.rdel); if (i < 0) return;
-    const [gone] = reports.splice(i, 1); saveReports(); renderReports();
-    toast('已刪除', '復原', () => { reports.splice(i, 0, gone); saveReports(); if (tab === 'rep') renderReports(); });
-  });
-  $('copyRep').onclick = async () => {
-    const lines = list.map((r, i) => `${i + 1}. ${r.name}\n   ${r.code}　${r.wh}${whLabel(r.wh)}\n   系統 ${fmt(r.sys)} → 實際 ${fmt(r.actual)}（${r.actual - r.sys < 0 ? '少' : '多'} ${fmt(Math.abs(r.actual - r.sys))}）\n   原因：${r.reason}${r.note ? `，${r.note}` : ''}（${when(r.at)}）`);
-    const text = `庫存數量回報（對照 ${data.date} 報表）\n` + lines.join('\n');
-    try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
-    catch (e) { prompt('請長按複製：', text); }
-  };
+    v.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => markDone(b.dataset.rdel));
+    $('copyRep').onclick = async () => {
+      const lines = list.map((r, i) => `${i + 1}. ${r.name}\n   ${r.code}　${r.wh}${whLabel(r.wh)}\n   系統 ${fmt(r.sys)} → 實際 ${fmt(r.actual)}（${r.actual - r.sys < 0 ? '少' : '多'} ${fmt(Math.abs(r.actual - r.sys))}）\n   原因：${r.reason}${r.note ? `，${r.note}` : ''}（${when(r.at)}）`);
+      const text = `庫存數量回報（對照 ${data.date} 報表）\n` + lines.join('\n');
+      try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
+      catch (e) { prompt('請長按複製：', text); }
+    };
+  }
+  $('repReload').onclick = () => loadReports(true);
 }
 
 /* ---------- 切換 ---------- */
@@ -521,7 +564,7 @@ function setTab(t) {
 }
 $('tabSearch').onclick = () => setTab('search');
 $('tabPick').onclick = () => setTab('pick');
-$('tabRep').onclick = () => setTab('rep');
+$('tabRep').onclick = () => { setTab('rep'); loadReports(true); };
 let qTimer;
 $('q').oninput = () => { clearTimeout(qTimer); qTimer = setTimeout(() => { shown = PAGE; if (tab === 'search') renderSearch(); else setTab('search'); }, 120); };
 $('clearQ').onclick = () => { $('q').value = ''; $('q').focus(); shown = PAGE; setTab('search'); };
@@ -561,6 +604,7 @@ async function applyFile(file, pw) {
   store.set('inv-pass', pass);
   index = null; shown = PAGE; pending = null; $('passBox').hidden = true;
   render();
+  loadReports(true);
   if (isUpdate) toast(`已更新到 ${d.date} 的資料`);
 }
 async function sync(manual) {
@@ -594,13 +638,18 @@ $('passBox').onsubmit = async e => {
 };
 document.querySelectorAll('[data-sync]').forEach(b => b.onclick = () => { if (!data) emptyState('stLoading'); sync(true); });
 // 回到這個畫面時（例如從 LINE 切回來）自動檢查，最多 5 分鐘一次
-document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - lastSync > 300000) sync(false); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (Date.now() - lastSync > 300000) sync(false);
+  loadReports(false);
+});
 $('uploadLink').textContent = new URL('upload.html', location.href).href;
 $('uploadLink').href = 'upload.html';
 
 render();
 if (!data) emptyState('stLoading');
 sync(false);
+loadReports(true);
 
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
