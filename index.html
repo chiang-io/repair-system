@@ -286,6 +286,12 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
         </div>
         <p class="note" id="planMsg">存檔會記住貨物清單、櫃型、間隙和手動調整的位置，存在這台裝置的瀏覽器裡（換電腦或手機看不到）。</p>
       </div>
+      <details class="contedit" id="uwSet">
+        <summary>實際單重（選填：過磅後填，以後加入常用品項都照這個算）</summary>
+        <p class="note">空白＝照資料上的單重。填了會記在這台裝置的瀏覽器裡；已經在清單裡的貨不會自動改，要重新加入或在清單改「每件重」。</p>
+        <div class="tablewrap" style="max-height:320px;overflow:auto"><table><thead><tr><th>品名</th><th>資料上 kg/支</th><th>實際 kg/支</th></tr></thead><tbody id="uwBody"></tbody></table></div>
+        <div class="row"><button type="button" id="uwClear">全部清掉（改回資料上的單重）</button><span class="note" id="uwMsg"></span></div>
+      </details>
       <details class="contedit" id="packSet">
         <summary>排法設定（前後間隙、排法、重的不壓輕的、平均分開）</summary>
       <div class="row">
@@ -802,6 +808,11 @@ const CATALOG=[
 ];
 CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5 可以綁在一起
 const CAT_ITEMS=CATALOG.flatMap(g=>g.items);
+// 實際單重（選填）：存在瀏覽器 cl-unitw，{品名: kg/支}；有填就蓋過資料上的單重
+CAT_ITEMS.forEach(it=>it.unit0=it.unit);
+function applyUW(){let m={};try{m=JSON.parse(localStorage.getItem('cl-unitw')||'{}')}catch(e){}
+  CAT_ITEMS.forEach(it=>{const v=+m[it.name];it.unit=v>0?v:it.unit0;it.uw=v>0;});return m;}
+applyUW();
 $('catSel').innerHTML=CATALOG.map(g=>`<optgroup label="${g.group}">${g.items.map(it=>`<option value="${CAT_ITEMS.indexOf(it)}">${it.name}</option>`).join('')}</optgroup>`).join('');
 // 選到的品項；「每捆幾支」改過時，照積木的方式算新的一捆尺寸（寬不變，高照層數）
 function curItem(){
@@ -823,7 +834,7 @@ function catInfo(){
   const u=it.per||'捆';
   $('catInfo').textContent=it.box?`一箱 ${it.l}×${it.w}×${it.h} cm，可以疊。高度常不一樣，預設 ${fmt(it.unit)} kg，加入後請在清單改成實際的高度和重量。`
     :it.pallet?`一板 ${it.l}×${it.w}×${it.h} cm，預設 ${fmt(it.unit)} kg，加入後請改成實際重量。`
-    :`一${u} ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg，每${u}約 ${fmt(it.unit*it.pcs+(it.tare||0))} kg${it.tare?`（含棧板 ${it.tare} kg）`:''}。`;
+    :`一${u} ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg${it.uw?`（實際單重，資料上 ${it.unit0}）`:''}，每${u}約 ${fmt(it.unit*it.pcs+(it.tare||0))} kg${it.tare?`（含棧板 ${it.tare} kg）`:''}。`;
   $('pcsWrap').hidden=$('qtyWrap').hidden=!!it.pallet;$('catTotUnit').textContent=it.pallet?(it.box?'箱':'板'):'支';
   catSplit();
 }
@@ -847,6 +858,17 @@ $('catTotal').addEventListener('input',()=>{$('catQty').value='';catSplit();});
 $('catQty').addEventListener('input',()=>{const q=Math.max(0,Math.floor(+$('catQty').value||0));$('catTotal').value=q?q*curItem().pcs:'';catSplit();});
 $('catPcs').addEventListener('input',()=>{if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*curItem().pcs;catInfo();});
 $('catPcs').value=CAT_ITEMS[+$('catSel').value].pcs;
+function renderUW(){
+  $('uwBody').innerHTML=CAT_ITEMS.filter(it=>!(it.pallet&&!it.per)).map(it=>{const i=CAT_ITEMS.indexOf(it);
+    return `<tr><td>${esc(it.name.replace(/（.*$/,''))}</td><td class="mono">${it.unit0}</td><td><input type="number" min="0" step="0.01" data-uw="${i}" value="${it.uw?it.unit:''}" placeholder="—" style="min-width:70px;width:80px"></td></tr>`}).join('');
+}
+$('uwBody').addEventListener('change',e=>{const t=e.target;if(!t.dataset.uw)return;const it=CAT_ITEMS[+t.dataset.uw];
+  let m={};try{m=JSON.parse(localStorage.getItem('cl-unitw')||'{}')}catch(_){}
+  const v=parseFloat(t.value);if(v>0)m[it.name]=v;else delete m[it.name];
+  try{localStorage.setItem('cl-unitw',JSON.stringify(m));$('uwMsg').textContent=v>0?`已記住：${it.name} 每支 ${v} kg`:`${it.name} 改回資料上的單重`;}catch(_){$('uwMsg').textContent='這個瀏覽器不能儲存（例如無痕模式），只有這次有效。';}
+  applyUW();t.value=it.uw?it.unit:'';catInfo();});
+$('uwClear').onclick=()=>{try{localStorage.removeItem('cl-unitw')}catch(e){}applyUW();renderUW();catInfo();$('uwMsg').textContent='已全部改回資料上的單重。';};
+renderUW();
 $('catFam').value=famOf(CAT_ITEMS[+$('catSel').value]);renderSizes();
 // 零頭的尺寸：依支數算層數決定高度；TB 40 支以內只有一小捆（4 支寬，約 55 cm 寬，每層約 5.5 cm）
 function partialDims(it,pcs){
