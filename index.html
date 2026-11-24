@@ -286,6 +286,12 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
         </div>
         <p class="note" id="planMsg">存檔會記住貨物清單、櫃型、間隙和手動調整的位置，存在這台裝置的瀏覽器裡（換電腦或手機看不到）。</p>
       </div>
+      <details class="contedit" id="uwSet">
+        <summary>實際單重（選填：過磅後填，以後加入常用品項都照這個算）</summary>
+        <p class="note">空白＝照資料上的單重。填了會記在這台裝置的瀏覽器裡；已經在清單裡的貨不會自動改，要重新加入或在清單改「每件重」。</p>
+        <div class="tablewrap" style="max-height:320px;overflow:auto"><table><thead><tr><th>品名</th><th>資料上 kg/支</th><th>實際 kg/支</th></tr></thead><tbody id="uwBody"></tbody></table></div>
+        <div class="row"><button type="button" id="uwClear">全部清掉（改回資料上的單重）</button><span class="note" id="uwMsg"></span></div>
+      </details>
       <details class="contedit" id="packSet">
         <summary>排法設定（前後間隙、排法、重的不壓輕的、平均分開）</summary>
       <div class="row">
@@ -699,7 +705,7 @@ function planRows(){
   });
 }
 function rowText(g){
-  const unit=/木箱/.test(g.n)?'箱':/棧板|U調|下調|調整座/.test(g.n)?'板':'捆';
+  const unit=/木箱/.test(g.n)?'箱':/棧板|U調|下調|調整座|支\/板/.test(g.n)?'板':'捆';
   const side=g.floorCount>1?`左右並排 ${g.floorCount} ${unit}`:`地板 1 ${unit}`;
   const how=g.minL>1?`疊在上面・第 ${g.minL}${g.maxL>g.minL?'～'+g.maxL:''} 層`:g.maxL>1?`${side}、疊 ${g.maxL} 層`:side;
   return `${g.n} ${g.count} ${unit}（${how}${g.cross?'・橫放':''}）`;
@@ -786,7 +792,8 @@ const CATALOG=[
   {group:'平主架 φ60.2（100 支/捆，長 + 5 × 115 × 95 cm）',items:[['1.0',5.75],['1.5',8.63],['2.0',11.42],['3.0',17.4]]
     .map(([m,u])=>({name:`平主架 ${m}m`,pcs:100,unit:u,l:Math.round(m*100)+5,w:115,h:95,perLayer:10}))},
   {group:'橫桿 φ48.6（100 支/捆，長 × 60 × 70 cm）',items:[['0.6',2.4],['0.9',3.18],['1.2',3.86],['1.5',4.7],['1.8',5.5],['2.4',7.32],['3.0',8.88]]
-    .map(([m,u])=>({name:`橫桿 ${m}m`,pcs:100,unit:u,l:Math.round(m*100),w:60,h:70,perLayer:10,tiers:3}))},
+    .map(([m,u])=>m==='0.6'?{name:`橫桿 ${m}m`,pcs:400,unit:u,tare:35,l:110,w:110,h:160,perLayer:100,per:'板'}   // 0.6m 放棧板，一板 400 支（使用者確認）
+      :{name:`橫桿 ${m}m`,pcs:100,unit:u,l:Math.round(m*100),w:60,h:70,perLayer:10,tiers:3})},
   {group:'斜桿 φ48.6（100 支/捆，× 60 × 70 cm）',items:[['0.6x1.5',5.62,180],['0.9x1.0',4.8,165],['0.9x1.5',5.98,205],['1.2x1.5',6.31,215],['1.5x1.5',6.8,225],['1.8x1.5',7.32,250],['2.4x1.5',8.66,300]]
     .map(([m,u,l])=>({name:`斜桿 ${m}m`,pcs:100,unit:u,l,w:60,h:70,perLayer:10}))},
   {group:'蜂巢鋼 200×161mm（30 支/捆，長 × 110 × 100 cm）',items:[['0.6',13.36],['0.9',18.18],['1.2',22.98],['1.5',27.63],['1.8',32.78],['2.4',42.7]]
@@ -801,6 +808,11 @@ const CATALOG=[
 ];
 CATALOG.forEach((g,gi)=>g.items.forEach(it=>{it.fam=gi;it.mixg=/主架/.test(it.name)?'主架':/橫桿|斜桿/.test(it.name)?'橫斜桿':String(gi)}));   // 混綁群組：主架＋平主架、橫桿＋斜桿、輔助桿 0.25＋0.5 可以綁在一起
 const CAT_ITEMS=CATALOG.flatMap(g=>g.items);
+// 實際單重（選填）：存在瀏覽器 cl-unitw，{品名: kg/支}；有填就蓋過資料上的單重
+CAT_ITEMS.forEach(it=>it.unit0=it.unit);
+function applyUW(){let m={};try{m=JSON.parse(localStorage.getItem('cl-unitw')||'{}')}catch(e){}
+  CAT_ITEMS.forEach(it=>{const v=+m[it.name];it.unit=v>0?v:it.unit0;it.uw=v>0;});return m;}
+applyUW();
 $('catSel').innerHTML=CATALOG.map(g=>`<optgroup label="${g.group}">${g.items.map(it=>`<option value="${CAT_ITEMS.indexOf(it)}">${it.name}</option>`).join('')}</optgroup>`).join('');
 // 選到的品項；「每捆幾支」改過時，照積木的方式算新的一捆尺寸（寬不變，高照層數）
 function curItem(){
@@ -822,7 +834,7 @@ function catInfo(){
   const u=it.per||'捆';
   $('catInfo').textContent=it.box?`一箱 ${it.l}×${it.w}×${it.h} cm，可以疊。高度常不一樣，預設 ${fmt(it.unit)} kg，加入後請在清單改成實際的高度和重量。`
     :it.pallet?`一板 ${it.l}×${it.w}×${it.h} cm，預設 ${fmt(it.unit)} kg，加入後請改成實際重量。`
-    :`一${u} ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg，每${u}約 ${fmt(it.unit*it.pcs+(it.tare||0))} kg${it.tare?`（含棧板 ${it.tare} kg）`:''}。`;
+    :`一${u} ${it.pcs} 支，${it.l}×${it.w}×${it.h} cm，每支 ${it.unit} kg${it.uw?`（實際單重，資料上 ${it.unit0}）`:''}，每${u}約 ${fmt(it.unit*it.pcs+(it.tare||0))} kg${it.tare?`（含棧板 ${it.tare} kg）`:''}。`;
   $('pcsWrap').hidden=$('qtyWrap').hidden=!!it.pallet;$('catTotUnit').textContent=it.pallet?(it.box?'箱':'板'):'支';
   catSplit();
 }
@@ -846,6 +858,17 @@ $('catTotal').addEventListener('input',()=>{$('catQty').value='';catSplit();});
 $('catQty').addEventListener('input',()=>{const q=Math.max(0,Math.floor(+$('catQty').value||0));$('catTotal').value=q?q*curItem().pcs:'';catSplit();});
 $('catPcs').addEventListener('input',()=>{if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*curItem().pcs;catInfo();});
 $('catPcs').value=CAT_ITEMS[+$('catSel').value].pcs;
+function renderUW(){
+  $('uwBody').innerHTML=CAT_ITEMS.filter(it=>!(it.pallet&&!it.per)).map(it=>{const i=CAT_ITEMS.indexOf(it);
+    return `<tr><td>${esc(it.name.replace(/（.*$/,''))}</td><td class="mono">${it.unit0}</td><td><input type="number" min="0" step="0.01" data-uw="${i}" value="${it.uw?it.unit:''}" placeholder="—" style="min-width:70px;width:80px"></td></tr>`}).join('');
+}
+$('uwBody').addEventListener('change',e=>{const t=e.target;if(!t.dataset.uw)return;const it=CAT_ITEMS[+t.dataset.uw];
+  let m={};try{m=JSON.parse(localStorage.getItem('cl-unitw')||'{}')}catch(_){}
+  const v=parseFloat(t.value);if(v>0)m[it.name]=v;else delete m[it.name];
+  try{localStorage.setItem('cl-unitw',JSON.stringify(m));$('uwMsg').textContent=v>0?`已記住：${it.name} 每支 ${v} kg`:`${it.name} 改回資料上的單重`;}catch(_){$('uwMsg').textContent='這個瀏覽器不能儲存（例如無痕模式），只有這次有效。';}
+  applyUW();t.value=it.uw?it.unit:'';catInfo();});
+$('uwClear').onclick=()=>{try{localStorage.removeItem('cl-unitw')}catch(e){}applyUW();renderUW();catInfo();$('uwMsg').textContent='已全部改回資料上的單重。';};
+renderUW();
 $('catFam').value=famOf(CAT_ITEMS[+$('catSel').value]);renderSizes();
 // 零頭的尺寸：依支數算層數決定高度；TB 40 支以內只有一小捆（4 支寬，約 55 cm 寬，每層約 5.5 cm）
 function partialDims(it,pcs){
@@ -863,8 +886,8 @@ function updatePartial(r){
   const it0=parts[0][0],total=parts.reduce((t,[,c])=>t+c,0),fullPcs=r.cap||it0.pcs;
   const d=total===it0.pcs?{w:it0.w,h:it0.h}:partialDims(it0,total);
   const desc=parts.map(([x,c])=>`${x.name.slice(famName(x).length).trim()}×${c}`).join('、');
-  Object.assign(r,{l:Math.max(...parts.map(([x])=>x.l)),w:d.w,h:d.h,kg:+parts.reduce((t,[x,c])=>t+x.unit*c,0).toFixed(1),qty:1,part:total,
-    name:parts.length===1?`${it0.name}（零頭 ${total}支）`:`${famName(it0)} ${total>=fullPcs?'混合整捆':'零頭合併'}（${desc}，共${total}支）`});
+  Object.assign(r,{l:Math.max(...parts.map(([x])=>x.l)),w:d.w,h:d.h,kg:+(parts.reduce((t,[x,c])=>t+x.unit*c,0)+(it0.tare||0)).toFixed(1),qty:1,part:total,
+    name:parts.length===1?`${it0.name}（零頭 ${total}支${it0.per==='板'?'・棧板':''}）`:`${famName(it0)} ${total>=fullPcs?'混合整捆':'零頭合併'}（${desc}，共${total}支）`});
 }
 function addPartial(it,count){
   let left=count;
@@ -1367,6 +1390,9 @@ function buildScene(keepCam){
   for(const b of result.placed){
     const col=COLORS[b.row%COLORS.length];
     const name=cargo[b.row].name;
+    if(palKind(name)){
+      const g=palProductGroup(b,col,boxMeshes.length,palKind(name));g.userData.grp=true;g.position.set(ox+b.x+b.l/2,b.z,oz+b.y+b.w/2);group.add(g);boxMeshes.push(g);continue;
+    }
     if(isHoney(name)){
       const hm=new THREE.Mesh(new THREE.BoxGeometry(b.l,b.h,b.w),honeyMaterials(b,col));hm.position.set(ox+b.x+b.l/2,b.z+b.h/2,oz+b.y+b.w/2);
       group.add(hm);boxMeshes.push(hm);continue;
@@ -1452,13 +1478,17 @@ function tbSide(hCm){
 // 端面：長方形斷面（135 x 50 mm 的方框），一支一支排列
 function tbEnd(widCm,hCm){
   const cols=Math.max(1,Math.round(widCm/13.5)),rows=Math.max(1,Math.round(hCm/5));
-  return canvasTex(`endR-${cols}-${rows}`,cols*54,rows*20,(g,w,h)=>{
+  // 端面（依廠內照片）：接近長方形的型鋼，底面中間留一道窄開口、兩邊捲邊往內（開口不要太大）
+  return canvasTex(`endC-${cols}-${rows}`,cols*108,rows*40,(g,w,h)=>{
     g.fillStyle=ZN.edge;g.fillRect(0,0,w,h);
-    const cw=w/cols,rh=h/rows,t=2.2;
+    const cw=w/cols,rh=h/rows,t=3.2;
     for(let i=0;i<cols;i++)for(let j=0;j<rows;j++){
-      const x=i*cw+0.6,y=j*rh+0.6,ww=cw-1.2,hh=rh-1.2;
-      g.fillStyle=ZN.steel;g.fillRect(x,y,ww,hh);            // 外框
-      g.fillStyle=ZN.dark;g.fillRect(x+t,y+t,ww-2*t,hh-2*t); // 中空
+      const x=i*cw+1,y=j*rh+1,ww=cw-2,hh=rh-2;
+      g.fillStyle=ZN.steel;g.fillRect(x,y,ww,hh);              // 外框
+      g.fillStyle=ZN.dark;g.fillRect(x+t,y+t,ww-2*t,hh-2*t);   // 中空
+      const gap=ww*0.22,gx=x+(ww-gap)/2;                       // 底面中間的開口（約 22% 寬）
+      g.fillStyle=ZN.dark;g.fillRect(gx,y+hh-t-0.5,gap,t+1);
+      g.fillStyle=ZN.steel;g.fillRect(gx-t,y+hh-t-hh*0.32,t,hh*0.32);g.fillRect(gx+gap,y+hh-t-hh*0.32,t,hh*0.32);   // 兩邊往內捲的邊
     }
   });
 }
@@ -1790,7 +1820,7 @@ function tbMaterials(b,col){
   return alongX?[end,end,top,top,side,side]:[side,side,top,top,end,end];
 }
 // 一般棧板示意：木棧板底座 + 包膜貨物，側面標示長寬高（不分品項，統一畫法）
-const isPallet=n=>/棧板|木箱|pallet|U調|下調|調整座/i.test(n);   // 調整座一板一板，畫成棧板示意
+const isPallet=n=>/棧板|木箱|pallet|U調|下調|調整座|支\/板/i.test(n);   // 調整座一板一板，畫成棧板示意
 function labelTex(key,wCm,hCm,col,lines){
   const s=4,W=Math.max(64,Math.round(wCm*s)),H=Math.max(48,Math.round(hCm*s));
   return canvasTex(key,W,H,(g,w,h)=>{
@@ -1822,6 +1852,50 @@ function palletGroup(b,col,edgeCol){
   load.position.y=base+lh/2;
   load.add(new THREE.LineSegments(new THREE.EdgesGeometry(load.geometry),new THREE.LineBasicMaterial({color:edgeCol,transparent:true,opacity:.35})));
   grp.add(load);return grp;
+}
+// 放在棧板上的產品（依照片）：U調＝螺桿＋U型頭、下調＝螺桿＋方底板，一支支交錯疊在棧板上；橫桿 0.6m 一板＝四小捆並排疊
+const palKind=n=>/U調|U型調整座/.test(n)?'U':/下調|平面調整座/.test(n)?'base':(/橫桿/.test(n)&&/支\/板|棧板/.test(n))?'ledger':null;
+// 圓角方板（下調底板）：邊長 w、圓角 r、厚 t，板面朝著螺桿方向
+function roundPlate(w,r,t){
+  const h=w/2,sh=new THREE.Shape();
+  sh.moveTo(-h+r,-h);sh.lineTo(h-r,-h);sh.quadraticCurveTo(h,-h,h,-h+r);sh.lineTo(h,h-r);sh.quadraticCurveTo(h,h,h-r,h);
+  sh.lineTo(-h+r,h);sh.quadraticCurveTo(-h,h,-h,h-r);sh.lineTo(-h,-h+r);sh.quadraticCurveTo(-h,-h,-h+r,-h);
+  const hole=new THREE.Path();hole.absarc(0,0,1.6,0,Math.PI*2,true);sh.holes.push(hole);
+  const g=new THREE.ExtrudeGeometry(sh,{depth:t,bevelEnabled:false,curveSegments:6});g.translate(0,0,-t/2);g.rotateY(Math.PI/2);return g;
+}
+function palProductGroup(b,col,idx,kind){
+  const g=new THREE.Group(),R=seeded(idx),base=Math.min(12,b.h*0.2),bh=b.h-base;
+  const woodM=new THREE.MeshLambertMaterial({color:'#b88a52'}),dark=new THREE.MeshLambertMaterial({color:'#3a2a1a'});
+  const top=new THREE.Mesh(new THREE.BoxGeometry(b.l,base*0.3,b.w),woodM);top.position.y=base*0.85;g.add(top);   // 棧板面
+  [-0.4,0,0.4].forEach(p=>{const bl=new THREE.Mesh(new THREE.BoxGeometry(b.l*0.14,base*0.7,b.w),dark);bl.position.set(b.l*p,base*0.35,0);g.add(bl);});
+  if(kind==='ledger'){   // 四小捆（2×2）並排，用橫桿捆的畫法
+    [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx,sz],k)=>{
+      const sub={l:b.l/2-1,w:b.w/2-1,h:bh,row:b.row};const lg=ledgerGroup(sub,col,idx*4+k);lg.position.set(sx*b.l/4,base,sz*b.w/4);g.add(lg);});
+  }else{
+    const cyl=(r,h)=>{const q=new THREE.CylinderGeometry(r,r,h,10);q.rotateZ(Math.PI/2);return q};
+    const len=Math.min(kind==='U'?48:60,b.l-4),sp=13,cols=Math.max(1,Math.floor((b.w-4)/sp)),layers=Math.max(1,Math.floor(bh/sp)),per=Math.max(1,Math.floor((b.l-4)/(len*0.62)));
+    const n=cols*layers*per,steel=new THREE.MeshLambertMaterial({color:'#b7c0c6'}),head=new THREE.MeshLambertMaterial({color:'#cfd6da'});
+    const rods=new THREE.InstancedMesh(cyl(1.9,len),steel,n),nuts=new THREE.InstancedMesh(new THREE.BoxGeometry(2.5,6,6),new THREE.MeshLambertMaterial({color:'#8e979e'}),n);
+    const heads=kind==='U'?new THREE.InstancedMesh(new THREE.BoxGeometry(0.9,13,14),head,n):new THREE.InstancedMesh(roundPlate(14,3,0.35),head,n);   // U型頭的底板／下調：圓角方底板、薄薄一片
+    const walls=kind==='U'?new THREE.InstancedMesh(new THREE.BoxGeometry(12,13,0.9),head,2*n):null;   // U型頭兩側的立板（看得出 U 字）
+    const base0=new THREE.Matrix4(),loc=new THREE.Matrix4();
+    const m=new THREE.Matrix4(),q=new THREE.Quaternion(),e=new THREE.Euler(),v=new THREE.Vector3(),one=new THREE.Vector3(1,1,1);let k=0;
+    for(let j=0;j<layers;j++)for(let i=0;i<cols;i++)for(let a=0;a<per;a++){
+      const dir=(i+j+a)%2?1:-1,x=-b.l/2+2+(a+0.5)*(b.l-4)/per+(R()-0.5)*3,y=base+sp*(j+0.5),z=-b.w/2+2+sp*(i+0.5)+(R()-0.5)*2;
+      e.set((R()-0.5)*0.5,(R()-0.5)*0.25,0);q.setFromEuler(e);
+      v.set(x,y,z);m.compose(v,q,one);rods.setMatrixAt(k,m);
+      v.set(x+dir*(len/2-0.4),y,z);m.compose(v,q,one);heads.setMatrixAt(k,m);
+      if(walls){base0.copy(m);[-1,1].forEach((sd,w)=>{loc.makeTranslation(dir*6,0,sd*6.6);m.multiplyMatrices(base0,loc);walls.setMatrixAt(2*k+w,m);});}
+      v.set(x-dir*len*0.1,y,z);m.compose(v,q,one);nuts.setMatrixAt(k,m);
+      k++;
+    }
+    [rods,heads,nuts,walls].forEach(o=>{if(o){o.instanceMatrix.needsUpdate=true;g.add(o)}});
+    // 包膜（透明）＋鐵皮帶
+    const wrap=new THREE.Mesh(new THREE.BoxGeometry(b.l+0.6,bh,b.w+0.6),new THREE.MeshLambertMaterial({color:'#e8eef2',transparent:true,opacity:0.18,depthWrite:false}));wrap.position.y=base+bh/2;g.add(wrap);
+  }
+  const strapM=new THREE.MeshLambertMaterial({color:'#7a4a2a'});
+  [-0.25,0.25].forEach(p=>{const st=new THREE.Mesh(new THREE.BoxGeometry(1.6,bh+base+0.6,b.w+1.2),strapM);st.position.set(b.l*p,(bh+base)/2,0);st.scale.set(1,1,1);g.add(new THREE.LineSegments(new THREE.EdgesGeometry(st.geometry),new THREE.LineBasicMaterial({color:'#7a4a2a'})).translateX(b.l*p).translateY((bh+base)/2));});
+  return g;
 }
 function resetView(){
   if(!camera)return;const C=CONTAINERS[cont],r=Math.max(C.L,400);
