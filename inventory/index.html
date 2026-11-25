@@ -119,6 +119,9 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .prog{height:10px;border-radius:99px;background:var(--sunk);overflow:hidden;margin:6px 0 2px}
 .prog i{display:block;height:100%;background:var(--good)}
 #countQ{width:100%;height:44px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);padding:0 12px;font-size:16px;margin:8px 0 2px}
+.pprog{height:6px;border-radius:99px;background:var(--sunk);overflow:hidden;margin:4px 0 2px;max-width:220px}
+.pprog i{display:block;height:100%;background:var(--good)}
+.cntnote{font-size:13px;color:var(--steel);margin:-2px 0 4px 36px}
 .picknote{font-size:13px;color:var(--steel);margin-top:2px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .btn{border:none;border-radius:10px;padding:10px 16px;background:var(--steel);color:#fff;font-weight:500}
@@ -285,8 +288,11 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
     <h3 id="cdName"></h3>
     <div class="mono" style="color:var(--steel);font-size:14px" id="cdCode"></div>
     <div class="sys" id="cdSys"></div>
-    <label class="f" for="cdQty">現場點到的數量</label>
+    <label class="f" for="cdQty">地上（架上、地上點到的）</label>
     <input id="cdQty" type="number" inputmode="decimal" step="any" min="0" placeholder="點到幾個？">
+    <label class="f" for="cdPrep">已備貨（為出貨先備好、放旁邊的）</label>
+    <input id="cdPrep" type="number" inputmode="decimal" step="any" min="0" placeholder="沒有就空著">
+    <div class="meta" id="cdPrepHint" style="margin:4px 0 0"></div>
     <div class="live" id="cdLive"></div>
     <div class="btnrow" style="flex-wrap:wrap">
       <button class="btn ghost" type="button" id="cdClear" style="margin-right:auto">清除這筆</button>
@@ -340,6 +346,8 @@ const repState = { loading: false, error: '', at: 0 };
 let tab = 'search';
 let counts = store.get('inv-counts-shared', []);   // 盤點中的數字（大家共用）：[{id, at, wh, code, name, sys, actual}]
 let countsOk = true, countWh = store.get('inv-count-wh', '06'), countFilter = 'all', countShown = 80;
+// 萬用資料表（Google 程式不用改）：備貨進度、盤點的「地上／已備貨」、每個倉最後一次結束盤點的時間
+let prepRows = store.get('inv-t-prep', []), detailRows = store.get('inv-t-detail', []), finishRows = store.get('inv-t-finish', []);
 let whSel = store.get('inv-wh', null);      // 選了哪些倉；null = 預設
 let shown = PAGE;
 
@@ -448,7 +456,7 @@ function cardHtml(g, sel, tokens) {
         <div class="wh ${MAIN_WH.includes(s.wh) ? 'main' : ''}"><span class="no mono">${esc(s.wh)}</span>${esc(whLabel(s.wh))}</div>
         <div class="qty ${s.qty < 0 ? 'neg' : s.qty === 0 ? 'zero' : ''}">${fmt(s.qty)}<small>支/個</small></div>
         ${REPORT_API ? `<button class="rep" data-rep="${esc(g.code)}" data-wh="${esc(s.wh)}">回報</button>` : ''}
-      </div>${repNoteHtml(g.code, s.wh)}`).join('')}
+      </div>${repNoteHtml(g.code, s.wh)}${(c => c ? `<div class="cntnote">盤點：${fmt(c.actual)}（${when(c.at)}）${c.actual === s.qty ? ' ✓' : ''}</div>` : '')(counts.find(c => c.wh === s.wh && c.code === g.code))}`).join('')}
       ${neg ? '<div class="negnote">帳上是負數，實際數量請以現場為準。</div>' : ''}
       <div class="srow">
         <span class="wt">${g.wt != null ? `單重 ${fmt(g.wt)} kg` : ''}${openPicks(g.code).length ? `<div class="picknote">備料中：${openPicks(g.code).map(p => `${esc(p.customer || '未填客戶')} ${fmt(p.qty)}`).join('、')}</div>` : ''}</span>
@@ -737,12 +745,26 @@ function renderPick() {
             <div class="name">${esc(p.name)}</div>
             <div class="code mono">${esc(p.code)}</div>
             <div class="qtyline">要備 <b>${fmt(p.qty)}</b> 支/個<button class="pedit" data-qty="${esc(p.id)}" aria-label="改數量">✏️</button></div>
-            <div class="meta" style="margin:2px 0 0">庫存：${esc(stockText(p.code))}</div>
+            <div class="qtyline" style="margin-top:0">已備 <b>${fmt(preparedOf(p))}</b><button class="pedit" data-prep="${esc(p.id)}" aria-label="填已備數量">✏️</button></div>
+            ${(() => { const d = preparedOf(p); return d > 0 && d < p.qty ? `<div class="pprog"><i style="width:${Math.min(100, d / p.qty * 100)}%"></i></div><div class="meta" style="margin:0">還差 ${fmt(p.qty - d)}</div>` : ''; })()}
+            <div class="meta" style="margin:2px 0 0">${when(p.at)} 加入・庫存：${esc(stockText(p.code))}</div>
           </div>
           <button class="del" data-del="${esc(p.id)}" aria-label="刪除這筆">×</button>
         </article>`).join('');
     }).join('') + `
     <div class="actions"><button class="btn primary" id="copyPick">複製全部（貼到 LINE）</button></div>`;
+    v.querySelectorAll('[data-prep]').forEach(b => b.onclick = async () => {
+      const p = picks.find(x => x.id === b.dataset.prep); if (!p) return;
+      const n = parseFloat(prompt(`${p.name}\n要備 ${fmt(p.qty)}，現在已經備了幾支？（備滿會自動打勾）`, preparedOf(p) || ''));
+      if (isNaN(n) || n < 0) return;
+      const r = prepRows.find(x => String(x.pick) === String(p.id));
+      try {
+        await tPut('備貨', { ...(r ? { id: r.id } : {}), pick: p.id, 編號: p.code, 已備: n });
+        const full = n >= p.qty;
+        if (full !== p.done) { p.done = full; savePicks(); await pickAction({ action: 'pickSet', id: p.id, status: full ? '已備' : '未備' }); }
+        toast(full ? '已備滿，打勾了 ✅' : `已備 ${fmt(n)}，還差 ${fmt(p.qty - n)}`); renderPick();
+      } catch (e) { toast(e.code ? e.message : '沒有網路，沒有存到，請等一下再試'); }
+    });
     v.querySelectorAll('[data-done]').forEach(c => c.onchange = () => {
       const p = picks.find(x => x.id === c.dataset.done); if (p) { p.done = c.checked; savePicks(); renderPick(); }
       pickAction({ action: 'pickSet', id: c.dataset.done, status: c.checked ? '已備' : '未備' });
@@ -774,7 +796,7 @@ function renderPick() {
     });
     $('copyPick').onclick = async () => {
       const text = '備料清單\n' + [...groups].map(([cust, list]) => `【${cust || '未填客戶'}】\n` +
-        list.map((p, i) => `${i + 1}. ${p.done ? '✅' : '⬜'} ${p.name}\n   ${p.code}　要備 ${fmt(p.qty)}`).join('\n')).join('\n\n');
+        list.map((p, i) => `${i + 1}. ${p.done ? '✅' : '⬜'} ${p.name}\n   ${p.code}　要備 ${fmt(p.qty)}${!p.done && preparedOf(p) ? `　已備 ${fmt(preparedOf(p))}` : ''}`).join('\n')).join('\n\n');
       try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
       catch (e) { prompt('請長按複製：', text); }
     };
@@ -810,11 +832,48 @@ function setReports(list) {
   reports = list.map(r => ({ ...r, wh: fixWh(r.wh) })); repState.error = ''; repState.at = Date.now(); saveReports();
   if (tab === 'search') renderSearch(); else if (tab === 'rep') renderReports();
 }
+async function tApi(action, table, extra) {
+  const j = await repApi({ action, table, ...extra });
+  if (!Array.isArray(j.rows)) { const e = new Error('Google 那邊的程式還沒更新'); e.code = 'old'; throw e; }
+  return j.rows;
+}
+function setTable(table, rows) {
+  if (table === '備貨') { prepRows = rows; store.set('inv-t-prep', rows); }
+  if (table === '盤點明細') { detailRows = rows; store.set('inv-t-detail', rows); }
+  if (table === '盤點結束') { finishRows = rows; store.set('inv-t-finish', rows); }
+}
+async function loadTables() {
+  try {
+    const names = ['備貨', '盤點明細', '盤點結束'];
+    const res = await Promise.all(names.map(t => tApi('tList', t)));
+    names.forEach((t, i) => setTable(t, res[i]));
+    if (tab === 'pick') renderPick(); else if (tab === 'count') renderCount(); else if (tab === 'search') renderSearch();
+  } catch (e) { /* 舊版 Google 程式或沒網路：先用上次的 */ }
+}
+async function tPut(table, row) { setTable(table, await tApi('tPut', table, { row })); }
+// 某一筆備料已經備了幾支（打勾 = 全部備好）
+function preparedOf(p) {
+  if (p.done) return p.qty;
+  const r = prepRows.find(x => String(x.pick) === String(p.id));
+  return r ? Number(r['已備']) || 0 : 0;
+}
+// 盤點時「已備貨」自動帶入：備料清單裡這個編號已經備的合計
+const preparedTotal = code => picks.filter(p => p.code === code).reduce((a, p) => a + preparedOf(p), 0);
+// 這個倉這次盤點（最後一次結束之後）的「地上／已備貨」
+function lastFinish(wh) {
+  return finishRows.filter(r => String(r['倉別']).padStart(2, '0') === wh).reduce((a, r) => (String(r['時間']) > a ? String(r['時間']) : a), '');
+}
+function detailOf(wh, code) {
+  const f = lastFinish(wh);
+  return detailRows.filter(r => String(r['倉別']).padStart(2, '0') === wh && String(r['編號']) === code && String(r['時間']) > f)
+    .sort((a, b) => String(a['時間']).localeCompare(String(b['時間']))).pop() || null;
+}
+
 async function loadReports(force) {
   if (!REPORT_API || !pass || repState.loading) return;
   if (!force && Date.now() - repState.at < 60000) return;   // 一分鐘內不重抓
   repState.loading = true; if (tab === 'rep') renderReports(); else if (tab === 'pick') renderPick(); else if (tab === 'count') renderCount();
-  try { applyShared(await repApi({ action: 'list' })); }
+  try { applyShared(await repApi({ action: 'list' })); loadTables(); }
   catch (e) { repState.error = e.code ? e.message : '連不上網路，顯示上次的回報'; }
   finally { repState.loading = false; if (tab === 'rep') renderReports(); else if (tab === 'pick') renderPick(); else if (tab === 'count') renderCount(); }
 }
@@ -962,7 +1021,7 @@ function renderCount() {
       const st = !x.c ? '' : x.c.actual === x.st.qty ? 'ok' : 'bad';
       return `<button class="crow ${st}" data-cc="${esc(x.g.code)}">
         <div class="cn"><div class="nm">${esc(x.g.name)}</div><div class="cd mono">${esc(x.g.code)}</div></div>
-        <div class="cq">系統 ${fmt(x.st.qty)}<br>${x.c ? `實盤 <b>${fmt(x.c.actual)}</b>${st === 'bad' ? `<br>${diffHtml({ actual: x.c.actual, sys: x.st.qty })}` : ' ✓'}` : '還沒盤'}</div>
+        <div class="cq">系統 ${fmt(x.st.qty)}<br>${x.c ? `實盤 <b>${fmt(x.c.actual)}</b>${st === 'bad' ? `<br>${diffHtml({ actual: x.c.actual, sys: x.st.qty })}` : ' ✓'}${(dd => dd && Number(dd['已備貨']) ? `<br>地上 ${fmt(Number(dd['地上']))}＋備貨 ${fmt(Number(dd['已備貨']))}` : '')(detailOf(countWh, x.g.code))}` : '還沒盤'}</div>
       </button>`;
     }).join('') + (vis.length > countShown ? `<button class="more" id="countMore">再顯示 ${Math.min(80, vis.length - countShown)} 項（共 ${vis.length}）</button>` : '');
   $('countList').querySelectorAll('[data-cc]').forEach(b => b.onclick = () => openCount(b.dataset.cc));
@@ -974,6 +1033,7 @@ $('countFinish').onclick = () => {
   const n = counts.filter(c => c.wh === countWh).length;
   if (!confirm(`結束 ${countWh} ${whLabel(countWh)}這次的盤點？\n\n已盤的 ${n} 項會存在 Google 試算表裡，App 上會清空，下次從頭開始。`)) return;
   countAction({ action: 'countFinish', wh: countWh }, '已結束這次盤點', () => { counts = counts.filter(c => c.wh !== countWh); });
+  tPut('盤點結束', { 倉別: countWh }).catch(() => {});
 };
 let cdTarget = null;
 function openCount(code) {
@@ -982,17 +1042,28 @@ function openCount(code) {
   $('cdName').textContent = x.g.name;
   $('cdCode').textContent = `${x.g.code}　${countWh} ${whLabel(countWh)}`;
   $('cdSys').innerHTML = `系統數量：<b>${fmt(x.st.qty)}</b>　<span style="color:var(--muted);font-size:13px">（${esc(data.date)} 報表）</span>`;
-  $('cdQty').value = x.c ? x.c.actual : '';
+  const d = detailOf(countWh, x.g.code), auto = preparedTotal(x.g.code);
+  if (d) { $('cdQty').value = d['地上']; $('cdPrep').value = d['已備貨'] || ''; }
+  else { $('cdPrep').value = auto || ''; $('cdQty').value = x.c ? Math.max(0, x.c.actual - (auto || 0)) : ''; }   // 舊的盤點只有合計：扣掉已備貨當作地上
+  $('cdPrepHint').textContent = auto ? `備料清單裡這項已備 ${fmt(auto)}，已自動帶入（可以改）` : '';
   $('cdClear').hidden = !x.c;
   cdLive();
   if (!$('countDlg').open) $('countDlg').showModal();
   $('cdQty').focus(); $('cdQty').select();
 }
+function cdTotal() {
+  const a = parseFloat($('cdQty').value), b = parseFloat($('cdPrep').value);
+  return isNaN(a) ? NaN : a + (isNaN(b) ? 0 : b);
+}
 function cdLive() {
-  const v = parseFloat($('cdQty').value);
+  const v = cdTotal(), b = parseFloat($('cdPrep').value);
+  if (!isNaN(v) && !isNaN(b) && b > 0 && cdTarget) {
+    $('cdLive').innerHTML = `合計 <b>${fmt(v)}</b>　` + (v === cdTarget.st.qty ? '<span style="color:var(--good)">✓ 和系統一樣</span>' : `和系統相比：${diffHtml({ actual: v, sys: cdTarget.st.qty })}`);
+    return;
+  }
   $('cdLive').innerHTML = isNaN(v) || !cdTarget ? '' : v === cdTarget.st.qty ? '<span style="color:var(--good)">✓ 和系統一樣</span>' : `和系統相比：${diffHtml({ actual: v, sys: cdTarget.st.qty })}`;
 }
-$('cdQty').oninput = cdLive;
+$('cdQty').oninput = $('cdPrep').oninput = cdLive;
 $('cdCancel').onclick = () => $('countDlg').close();
 async function countAction(body, okMsg, optimistic) {
   const before = counts.slice();
@@ -1008,8 +1079,10 @@ async function countAction(body, okMsg, optimistic) {
   }
 }
 function saveCount(next) {
-  const v = parseFloat($('cdQty').value), x = cdTarget;
-  if (isNaN(v) || v < 0 || !x) { $('cdQty').focus(); return; }
+  const v = cdTotal(), x = cdTarget, floor = parseFloat($('cdQty').value), prep = parseFloat($('cdPrep').value) || 0;
+  if (isNaN(v) || floor < 0 || prep < 0 || !x) { $('cdQty').focus(); return; }
+  const d = detailOf(countWh, x.g.code);
+  tPut('盤點明細', { ...(d ? { id: d.id } : {}), 倉別: countWh, 編號: x.g.code, 地上: floor, 已備貨: prep }).catch(() => {});
   const rec = { wh: countWh, code: x.g.code, name: x.g.name, sys: x.st.qty, actual: v, dataDate: data.date };
   countAction({ action: 'countSet', count: rec }, null, () => {
     counts = counts.filter(c => !(c.wh === countWh && c.code === x.g.code)).concat([{ ...rec, id: 'tmp', at: new Date().toISOString() }]);
