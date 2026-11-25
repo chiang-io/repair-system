@@ -49,6 +49,10 @@ header .date b{display:block;font-size:14px;opacity:1}
   padding:0 14px;font-size:18px}
 .search input:focus{outline:none;border-color:var(--steel)}
 .search .clear{width:52px;border:2px solid var(--line);border-radius:12px;background:var(--surface);font-size:20px}
+.search .cam{font-size:22px}
+.scan{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.scan .txt{flex:1;min-width:0;word-break:break-all}
+.likely{font-size:12px;color:var(--steel);font-weight:700;margin-bottom:2px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .chip{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:14px;line-height:1.3}
 .chip[aria-pressed="true"]{background:var(--steel);border-color:var(--steel);color:#fff}
@@ -178,7 +182,9 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
       <div class="search">
         <input id="q" type="text" inputmode="search" autocomplete="off" enterkeyhint="search"
           placeholder="打品名或編號，例如：斜桿 1.8">
+        <button class="clear cam" id="camBtn" aria-label="拍照找品名" title="拍標示卡找品名">📷</button>
         <button class="clear" id="clearQ" aria-label="清除">×</button>
+        <input type="file" id="camFile" accept="image/*" capture="environment" hidden>
       </div>
       <div class="chips" id="chips"></div>
       <div class="tabs" role="tablist">
@@ -388,23 +394,29 @@ function renderSearch() {
   const tokens = raw ? raw.split(/\s+/).map(norm).filter(Boolean) : [];
   const sel = selectedWh();
   const view = $('searchView');
+  if (scan.busy || scan.msg) { view.innerHTML = `<div class="banner">📷 ${esc(scan.msg || '處理中…')}</div>`; return; }
   if (!tokens.length) {
     const n = index.groups.filter(g => g.stock.some(s => sel.includes(s.wh))).length;
     view.innerHTML = `<p class="meta">${pickedWh().length ? '目前選的倉' : '全部倉'}共有 ${n} 種品項。在上面打品名或編號開始找；可以打好幾段，用空白分開，例如「斜桿 1.8」「SB-BD」「螺絲 M6」。</p>`;
     return;
   }
-  const hit = index.groups.filter(g => tokens.every(t => g.hay.includes(t)));
+  const fromCam = camText !== null && camText === $('q').value;
+  let hit = fromCam ? [] : index.groups.filter(g => tokens.every(t => g.hay.includes(t)));
+  let fuzzy = false;
+  if (!hit.length) { hit = fuzzyFind(raw); fuzzy = hit.length > 0; }
   const inSel = hit.filter(g => g.stock.some(s => sel.includes(s.wh)));
   const outside = hit.length - inSel.length;
   const q0 = tokens.join('');
-  inSel.sort((a, b) => ((b.ncode === q0) - (a.ncode === q0)) || ((b.ncode.startsWith(q0)) - (a.ncode.startsWith(q0))) || a.code.localeCompare(b.code));
-  let html = `<p class="meta">找到 ${inSel.length} 種${outside ? `，其他倉還有 ${outside} 種` : ''}</p>`;
+  if (!fuzzy) inSel.sort((a, b) => ((b.ncode === q0) - (a.ncode === q0)) || ((b.ncode.startsWith(q0)) - (a.ncode.startsWith(q0))) || a.code.localeCompare(b.code));
+  let html = fuzzy
+    ? `<p class="meta">${fromCam ? '📷 拍照認出的字不一定準，' : '找不到完全一樣的，'}以下是<b>最像的 ${inSel.length} 種</b>（最像的排最前面）${outside ? `，其他倉還有 ${outside} 種` : ''}。字不對可以直接改上面的搜尋框。</p>`
+    : `<p class="meta">找到 ${inSel.length} 種${outside ? `，其他倉還有 ${outside} 種` : ''}</p>`;
   if (!inSel.length) {
     html = `<div class="banner">${outside
       ? `目前選的倉沒有，但<b>其他倉有 ${outside} 種</b>。<br><button class="btn" id="showAll" style="margin-top:8px">看全部倉</button>`
-      : '找不到。試試看少打幾個字，或只打編號的一部分。'}</div>`;
+      : fromCam ? '認不出是哪個品項。請靠近一點、讓品名字大一點再拍，或直接打字。' : '找不到。試試看少打幾個字，或只打編號的一部分。'}</div>`;
   }
-  html += inSel.slice(0, shown).map(g => cardHtml(g, sel, tokens)).join('');
+  html += inSel.slice(0, shown).map((g, i) => (fuzzy && i === 0 ? '<div class="likely" style="margin-top:10px">最像</div>' : '') + cardHtml(g, sel, fuzzy ? [] : tokens)).join('');
   if (inSel.length > shown) html += `<button class="more" id="more">再顯示 ${Math.min(PAGE, inSel.length - shown)} 筆（共 ${inSel.length}）</button>`;
   else if (outside && inSel.length) html += `<button class="more" id="showAll">其他倉還有 ${outside} 種，看全部倉</button>`;
   view.innerHTML = html;
@@ -413,6 +425,92 @@ function renderSearch() {
   view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => openPick(b.dataset.add));
   view.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => openReport(b.dataset.rep, b.dataset.wh));
 }
+
+/* ---------- 模糊搜尋：拍照或手打的字不完全一樣時，找「最像」的品項 ---------- */
+const CJK_RE = /[㐀-鿿]/g;
+function fuzzyPrep(s) {
+  const n = norm(s);
+  return {
+    cjk: new Set(n.match(CJK_RE) || []),
+    nums: new Set(n.match(/\d+(?:\.\d+)?/g) || []),
+    models: new Set(n.replace(/-/g, '').match(/[a-z]+\d+[a-z]*/g) || []),   // 型號，例如 CN-90 → cn90
+  };
+}
+// 辨識常把 φ 認成 6 或 @，所以「648.6」也算對到「48.6」
+function numHit(qnums, h) {
+  if (qnums.has(h)) return true;
+  for (const q of qnums) if (h.length >= 2 && q.length > h.length && q.endsWith(h)) return true;
+  return false;
+}
+const dice = (hit, a, b) => (a + b) ? 2 * hit / (a + b) : 0;
+function fuzzyScore(q, g) {
+  const f = g.fz || (g.fz = fuzzyPrep(g.name));
+  let c = 0; f.cjk.forEach(x => { if (q.cjk.has(x)) c++; });
+  let n = 0; f.nums.forEach(x => { if (numHit(q.nums, x)) n++; });
+  let m = 0; f.models.forEach(x => { if (q.models.has(x)) m++; });
+  const model = f.models.size || q.models.size ? dice(m, q.models.size, f.models.size) : 0.5;
+  return dice(c, q.cjk.size, f.cjk.size) * 0.45 + dice(n, q.nums.size, f.nums.size) * 0.3 + model * 0.25;
+}
+function fuzzyFind(raw) {
+  const qp = fuzzyPrep(raw);
+  const scored = index.groups.map(g => ({ g, s: fuzzyScore(qp, g) })).filter(x => x.s >= 0.3).sort((a, b) => b.s - a.s);
+  const best = scored.length ? scored[0].s : 0;
+  return scored.filter(x => x.s >= best * 0.7).slice(0, 12).map(x => x.g);
+}
+
+/* ---------- 📷 拍標示卡找品名（在手機裡辨識，照片不會上傳） ---------- */
+const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const TESS_OPT = {
+  workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+  corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+  langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/chi_tra@1.0.0/4.0.0_best_int',
+};
+let ocrWorker = null, camText = null;   // camText：目前搜尋框的字是不是拍照來的
+const scan = { busy: false, msg: '' };
+function scanMsg(m) { scan.msg = m; if (tab === 'search') renderSearch(); }
+async function getOcr() {
+  if (ocrWorker) return ocrWorker;
+  scanMsg('第一次使用，正在下載辨識工具（約 6MB，之後就不用）…');
+  await loadScript(TESS_URL);
+  ocrWorker = await Tesseract.createWorker('chi_tra', 1, { ...TESS_OPT,
+    logger: m => { if (m.status === 'loading language traineddata' && m.progress < 1) scanMsg(`下載中文辨識資料… ${Math.round(m.progress * 100)}%`); } });
+  return ocrWorker;
+}
+// 照片縮小、轉灰階、拉高對比，辨識比較準也比較快
+async function prepImage(file) {
+  const img = await createImageBitmap(file);
+  const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0, c.width, c.height);
+  const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const v = Math.min(255, Math.max(0, (0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2] - 128) * 1.4 + 128));
+    p[i] = p[i + 1] = p[i + 2] = v;
+  }
+  x.putImageData(d, 0, 0);
+  return c;
+}
+$('camBtn').onclick = () => { if (!scan.busy) $('camFile').click(); };
+$('camFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  scan.busy = true; setTab('search');
+  try {
+    const w = await getOcr();
+    scanMsg('辨識中…');
+    const { data: d } = await w.recognize(await prepImage(f));
+    // 中文字之間的空白拿掉，其他保留
+    const text = d.text.replace(/\s+/g, ' ').replace(/([㐀-鿿]) (?=[㐀-鿿])/g, '$1').trim();
+    scan.busy = false; scan.msg = '';
+    if (!text) { toast('沒有認出字，請靠近一點、光線亮一點再拍'); renderSearch(); return; }
+    $('q').value = text.slice(0, 60); camText = $('q').value; shown = PAGE;
+    renderSearch();
+  } catch (err) {
+    console.error(err); scan.busy = false; scan.msg = '';
+    toast(navigator.onLine === false ? '第一次使用要有網路，才能下載辨識工具' : '辨識失敗：' + err.message);
+    renderSearch();
+  }
+};
 
 /* ---------- 備料清單（大家共用，存在 Google 試算表；客戶名稱不放進 GitHub） ---------- */
 function savePicks() {

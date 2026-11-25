@@ -70,38 +70,37 @@ footer{color:var(--muted);font-size:13px;padding:10px 0 40px}
   <p class="muted" style="margin-top:16px">把 ERP 的「存貨異動統計表-分倉」上傳，大家的手機打開「庫存查詢」就會更新。只要知道公司密碼就能上傳，不用登入其他帳號。</p>
 
   <section class="step" id="s1">
-    <h2><span class="n">1</span>選擇報表</h2>
+    <h2><span class="n">1</span>選擇報表，按「上傳」</h2>
     <div class="drop" id="drop">
       <p>把 <b>PDF</b> 或 <b>Excel</b> 拖到這裡，或</p>
       <button class="btn" id="pick">選擇檔案</button>
       <input type="file" id="file" accept=".pdf,.xlsx,.xls,.csv,application/pdf" hidden>
     </div>
     <div id="result"></div>
+    <div id="upBox" hidden style="margin-top:14px">
+      <p style="margin:0 0 8px">確認上面的倉別和合計沒問題，就按：</p>
+      <button class="btn primary" id="make" style="font-size:20px;padding:14px 34px">上傳</button>
+      <span class="muted" id="pwNote" style="margin-left:10px"></span>
+      <div class="msg" id="makeMsg"></div>
+      <details style="margin-top:14px" id="oldWay">
+        <summary class="muted">連不上 Google 時：改用下載檔案、放到 GitHub（要登入 GitHub）</summary>
+        <ol class="howto">
+          <li><button class="btn ghost" id="makeFile" type="button">下載資料檔</button>　會下載 <b class="mono">inventory-data.json</b>。</li>
+          <li>按 <a id="ghUpload" href="https://github.com/chiang-io/repair-system/upload/main/inventory" target="_blank" rel="noopener">打開 GitHub 上傳頁面</a>，把檔案拖進去，按綠色的 <kbd>Commit changes</kbd>。</li>
+        </ol>
+      </details>
+    </div>
   </section>
 
-  <section class="step off" id="s2">
+  <section class="step" id="s2" hidden>
     <h2><span class="n">2</span>公司密碼</h2>
-    <p class="muted">資料會用這組密碼加密，因為網站是公開的。手機第一次打開時要輸入同一組密碼。這台電腦會記住。</p>
+    <p class="muted">資料會用這組密碼加密，因為網站是公開的。手機第一次打開時要輸入同一組密碼。這台電腦會記住，下次就不用再輸入。</p>
     <div class="pw">
       <input id="pw1" type="password" autocomplete="new-password" placeholder="密碼">
       <input id="pw2" type="password" autocomplete="new-password" placeholder="再輸入一次">
       <label class="muted"><input type="checkbox" id="showPw"> 顯示</label>
     </div>
     <div class="msg" id="pwMsg"></div>
-  </section>
-
-  <section class="step off" id="s3">
-    <h2><span class="n">3</span>上傳</h2>
-    <p>按下面的按鈕，資料會加密後存到公司的 Google 試算表，<b>大家的手機打開就會更新</b>。</p>
-    <button class="btn primary" id="make">上傳</button>
-    <div class="msg" id="makeMsg"></div>
-    <details style="margin-top:14px" id="oldWay">
-      <summary class="muted">連不上 Google 時：改用下載檔案、放到 GitHub（要登入 GitHub）</summary>
-      <ol class="howto">
-        <li><button class="btn ghost" id="makeFile" type="button">下載資料檔</button>　會下載 <b class="mono">inventory-data.json</b>。</li>
-        <li>按 <a id="ghUpload" href="https://github.com/chiang-io/repair-system/upload/main/inventory" target="_blank" rel="noopener">打開 GitHub 上傳頁面</a>，把檔案拖進去，按綠色的 <kbd>Commit changes</kbd>。</li>
-      </ol>
-    </details>
   </section>
 
   <footer>
@@ -161,7 +160,7 @@ async function load(f) {
       ${by['?'] ? '<p class="msg bad"><b>有資料認不出是哪個倉（倉別「?」）。</b>請不要上傳，把這個檔案傳給 Claude 看看。</p>' : ''}
       ${r.ignored.length ? `<p class="muted">已略過不需要的倉：${r.ignored.map(x => `${esc(x.wh)} ${esc(x.name)}（${x.n} 筆）`).join('、')}。只保留 ${KEEP_WH.join('、')}。</p>` : ''}
       ${KEEP_WH.some(w => !by[w]) ? `<p class="msg bad">⚠ 這份缺少 <b>${KEEP_WH.filter(w => !by[w]).join('、')}</b> 倉。上傳後，網站上這些倉的資料會<b>不見</b>。請從 ERP 匯出包含 ${KEEP_WH.join('、')} 的報表。</p>` : ''}`;
-    $('s1').classList.add('done'); $('s2').classList.remove('off');
+    $('upBox').hidden = false; showPwStep();
     checkPw();
     if (!$('pw1').value) $('pw1').focus();
   } catch (err) {
@@ -182,10 +181,17 @@ function checkPw() {
   else if (a !== b) { m.textContent = b ? '兩次輸入的不一樣。' : '請再輸入一次確認。'; m.className = 'msg bad'; }
   else { ok = true; m.textContent = saved && a === saved ? '✓ 使用這台電腦記住的密碼' : '✓ 密碼可以用'; m.className = 'msg good'; }
   $('s2').classList.toggle('done', ok);
-  $('s3').classList.toggle('off', !(ok && parsed));
+  $('make').disabled = !(ok && parsed);
   return ok;
 }
 $('pw1').oninput = $('pw2').oninput = checkPw;
+// 電腦記住密碼時，密碼那一步收起來；要換密碼再打開
+function showPwStep(force) {
+  const remembered = !!saved && $('pw1').value === saved && !force;
+  $('s2').hidden = remembered;
+  $('pwNote').innerHTML = remembered ? '使用這台電腦記住的密碼・<a href="#" id="chgPw">換密碼</a>' : '密碼在下面第 2 步';
+  const c = $('chgPw'); if (c) c.onclick = ev => { ev.preventDefault(); showPwStep(true); $('pw1').select(); };
+}
 
 /* 3. 加密並下載 */
 async function prepare() {
@@ -224,7 +230,7 @@ $('make').onclick = async () => {
     const j = await putDataFile(p.file, p.pw);
     store.set('inv-upload-pass', p.pw);
     $('makeMsg').innerHTML = `✓ <b>上傳完成</b>：${esc(j.date)} 的資料，${j.count} 筆。大家的手機打開（或按「檢查有沒有新資料」）就會更新。`;
-    $('makeMsg').className = 'msg good'; $('s3').classList.add('done');
+    $('makeMsg').className = 'msg good';
     $('siteNow').textContent = '網站上的資料：' + describe(p.file);
   } catch (err) {
     console.error(err);
