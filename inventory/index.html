@@ -270,10 +270,8 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
     <h3 id="pickName"></h3>
     <div class="mono" style="color:var(--steel);font-size:14px" id="pickCode"></div>
     <div class="sys" id="pickStock"></div>
-    <label class="f" for="pickQty">要備幾支／個</label>
+    <label class="f" for="pickQty">已經備好幾支／個</label>
     <input id="pickQty" type="number" inputmode="numeric" step="any" min="0" required placeholder="數量">
-    <label class="f" for="pickDone">已經備好幾支（選填）</label>
-    <input id="pickDone" type="number" inputmode="numeric" step="any" min="0" placeholder="還沒備就空著">
     <label class="f" for="pickCust">給哪個客戶（選填）</label>
     <input id="pickCust" type="text" list="custList" autocomplete="off" placeholder="客戶名稱">
     <datalist id="custList"></datalist>
@@ -682,7 +680,7 @@ function openPick(code) {
   $('pickName').textContent = g.name;
   $('pickCode').textContent = code;
   $('pickStock').textContent = '庫存：' + stockText(code);
-  $('pickQty').value = ''; $('pickDone').value = ''; $('pickLive').textContent = '';
+  $('pickQty').value = ''; $('pickLive').textContent = '';
   renderCustChips();
   markCust();
   $('pickDlg').showModal();
@@ -701,27 +699,16 @@ $('pickForm').onsubmit = async e => {
   if (pickSending) return;
   pickSending = true;
   const customer = $('pickCust').value.trim();
-  const doneN = parseFloat($('pickDone').value);
   const btn = $('pickForm').querySelector('[type=submit]'); btn.disabled = true; btn.textContent = '加入中…';
   try {
-    const before = new Set(picks.map(p => p.id));
     applyShared(await repApi({ action: 'pickAdd', pick: { ...pickTarget, qty, customer } }));
     if (!picksOk) throw Object.assign(new Error('Google 那邊的程式還沒更新，備料清單暫時不能用'), { code: 'old' });
-    // 加入時就填了「已備」：找到剛加入的那筆，記下已備；備滿直接打勾
-    if (!isNaN(doneN) && doneN > 0) {
-      const np = picks.filter(p => !before.has(p.id) && p.code === pickTarget.code && (p.customer || '') === customer)
-        .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
-      if (np) {
-        await tPut('備貨', { pick: np.id, 編號: np.code, 已備: doneN }).catch(() => {});
-        if (doneN >= qty) { np.done = true; savePicks(); await pickAction({ action: 'pickSet', id: np.id, status: '已備' }); }
-      }
-    }
     if (customer) {
       store.set('inv-customers', [customer, ...store.get('inv-customers', []).filter(c => c !== customer)].slice(0, 20));
       store.set('inv-customers-hidden', store.get('inv-customers-hidden', []).filter(c => c !== customer));
     }
     $('pickDlg').close();
-    toast(`已加入${customer ? ` ${customer}` : ''}的備料` + (!isNaN(doneN) && doneN > 0 ? (doneN >= qty ? '，已備滿 ✅' : `，已備 ${fmt(doneN)}，還差 ${fmt(qty - doneN)}`) : ''));
+    toast(`已加入${customer ? ` ${customer}` : ''}的備料：已備 ${fmt(qty)}`);
   } catch (err) {
     $('pickLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有加入：連不上網路，請有訊號時再按一次。')}</span>`;
   } finally { pickSending = false; btn.disabled = false; btn.textContent = '加入'; }
@@ -739,7 +726,7 @@ function renderPick() {
   if (!index || index.data !== data) buildIndex();
   const v = $('pickView');
   const head = `<div class="meta" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <span style="flex:1">大家的備料，依客戶分組。備好打勾，清掉後就消失。${repState.loading ? '・更新中…' : ''}</span>
+      <span style="flex:1">大家已經備好的貨，依客戶分組。出貨後打勾，再按「清掉已出貨的」。${repState.loading ? '・更新中…' : ''}</span>
       <button class="btn ghost" id="pickReload" style="padding:6px 12px">重新整理</button></div>`;
   if (!picksOk) {
     v.innerHTML = head + `<div class="banner warn"><b>Google 那邊的程式還沒更新。</b>請照說明在 Apps Script 貼上新程式並重新部署，備料清單才能用。</div>`;
@@ -750,35 +737,21 @@ function renderPick() {
     picks.forEach(p => { const k = p.customer || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
     v.innerHTML = head + [...groups].map(([cust, list]) => {
       const done = list.filter(p => p.done).length;
-      return `<div class="cgroup"><h3>${esc(cust || '未填客戶')}<button class="pedit" data-rename="${esc(cust)}" aria-label="改客戶名稱">✏️</button><span class="muted" style="color:var(--muted);font-size:13px;font-weight:400">　${list.length} 項，已備 ${done}</span></h3>
-        ${done ? `<button class="btn ghost small" data-clear="${esc(cust)}">清掉已備好的</button>` : ''}</div>` +
+      return `<div class="cgroup"><h3>${esc(cust || '未填客戶')}<button class="pedit" data-rename="${esc(cust)}" aria-label="改客戶名稱">✏️</button><span class="muted" style="color:var(--muted);font-size:13px;font-weight:400">　${list.length} 項${done ? `，已出貨 ${done}` : ''}</span></h3>
+        ${done ? `<button class="btn ghost small" data-clear="${esc(cust)}">清掉已出貨的</button>` : ''}</div>` +
         list.map(p => `
         <article class="card pick ${p.done ? 'done' : ''}">
-          <input type="checkbox" data-done="${esc(p.id)}" ${p.done ? 'checked' : ''} aria-label="備好了">
+          <input type="checkbox" data-done="${esc(p.id)}" ${p.done ? 'checked' : ''} aria-label="已出貨">
           <div class="body">
             <div class="name">${esc(p.name)}</div>
             <div class="code mono">${esc(p.code)}</div>
-            <div class="qtyline">要備 <b>${fmt(p.qty)}</b> 支/個<button class="pedit" data-qty="${esc(p.id)}" aria-label="改數量">✏️</button></div>
-            <div class="qtyline" style="margin-top:0">已備 <b>${fmt(preparedOf(p))}</b><button class="pedit" data-prep="${esc(p.id)}" aria-label="填已備數量">✏️</button></div>
-            ${(() => { const d = preparedOf(p); return d > 0 && d < p.qty ? `<div class="pprog"><i style="width:${Math.min(100, d / p.qty * 100)}%"></i></div><div class="meta" style="margin:0">還差 ${fmt(p.qty - d)}</div>` : ''; })()}
+            <div class="qtyline">已備 <b>${fmt(preparedOf(p))}</b> 支/個<button class="pedit" data-qty="${esc(p.id)}" aria-label="改已備數量">✏️</button>${p.done ? '　<span style="color:var(--good);font-size:14px">已出貨</span>' : ''}</div>
             <div class="meta" style="margin:2px 0 0">${when(p.at)} 加入・庫存：${esc(stockText(p.code))}</div>
           </div>
           <button class="del" data-del="${esc(p.id)}" aria-label="刪除這筆">×</button>
         </article>`).join('');
     }).join('') + `
     <div class="actions"><button class="btn primary" id="copyPick">複製全部（貼到 LINE）</button></div>`;
-    v.querySelectorAll('[data-prep]').forEach(b => b.onclick = async () => {
-      const p = picks.find(x => x.id === b.dataset.prep); if (!p) return;
-      const n = parseFloat(prompt(`${p.name}\n要備 ${fmt(p.qty)}，現在已經備了幾支？（備滿會自動打勾）`, preparedOf(p) || ''));
-      if (isNaN(n) || n < 0) return;
-      const r = prepRows.find(x => String(x.pick) === String(p.id));
-      try {
-        await tPut('備貨', { ...(r ? { id: r.id } : {}), pick: p.id, 編號: p.code, 已備: n });
-        const full = n >= p.qty;
-        if (full !== p.done) { p.done = full; savePicks(); await pickAction({ action: 'pickSet', id: p.id, status: full ? '已備' : '未備' }); }
-        toast(full ? '已備滿，打勾了 ✅' : `已備 ${fmt(n)}，還差 ${fmt(p.qty - n)}`); renderPick();
-      } catch (e) { toast(e.code ? e.message : '沒有網路，沒有存到，請等一下再試'); }
-    });
     v.querySelectorAll('[data-done]').forEach(c => c.onchange = () => {
       const p = picks.find(x => x.id === c.dataset.done); if (p) { p.done = c.checked; savePicks(); renderPick(); }
       pickAction({ action: 'pickSet', id: c.dataset.done, status: c.checked ? '已備' : '未備' });
@@ -799,8 +772,10 @@ function renderPick() {
     });
     v.querySelectorAll('[data-qty]').forEach(b => b.onclick = () => {
       const p = picks.find(x => x.id === b.dataset.qty); if (!p) return;
-      const n = parseFloat(prompt(`${p.name}\n要備幾支／個？`, p.qty));
-      if (isNaN(n) || n <= 0 || n === p.qty) return;
+      const n = parseFloat(prompt(`${p.name}\n已經備好幾支／個？`, preparedOf(p)));
+      if (isNaN(n) || n <= 0 || n === preparedOf(p)) return;
+      const r = prepRows.find(x => String(x.pick) === String(p.id));
+      if (r) tPut('備貨', { id: r.id, 已備: n }).catch(() => {});
       pickAction({ action: 'pickQty', id: p.id, qty: n }, `已改成 ${fmt(n)}`, 4);
     });
     v.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => {
@@ -810,7 +785,7 @@ function renderPick() {
     });
     $('copyPick').onclick = async () => {
       const text = '備料清單\n' + [...groups].map(([cust, list]) => `【${cust || '未填客戶'}】\n` +
-        list.map((p, i) => `${i + 1}. ${p.done ? '✅' : '⬜'} ${p.name}\n   ${p.code}　要備 ${fmt(p.qty)}${!p.done && preparedOf(p) ? `　已備 ${fmt(preparedOf(p))}` : ''}`).join('\n')).join('\n\n');
+        list.map((p, i) => `${i + 1}. ${p.name}\n   ${p.code}　已備 ${fmt(preparedOf(p))}${p.done ? '（已出貨）' : ''}`).join('\n')).join('\n\n');
       try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
       catch (e) { prompt('請長按複製：', text); }
     };
@@ -865,14 +840,13 @@ async function loadTables() {
   } catch (e) { /* 舊版 Google 程式或沒網路：先用上次的 */ }
 }
 async function tPut(table, row) { setTable(table, await tApi('tPut', table, { row })); }
-// 某一筆備料已經備了幾支（打勾 = 全部備好）
+// 某一筆備料已經備了幾支：就是加入時填的數量（舊資料若另外記過「已備」，以那個為準）
 function preparedOf(p) {
-  if (p.done) return p.qty;
   const r = prepRows.find(x => String(x.pick) === String(p.id));
-  return r ? Number(r['已備']) || 0 : 0;
+  return r ? Number(r['已備']) || 0 : p.qty;
 }
-// 盤點時「已備貨」自動帶入：備料清單裡這個編號已經備的合計
-const preparedTotal = code => picks.filter(p => p.code === code).reduce((a, p) => a + preparedOf(p), 0);
+// 盤點時「已備貨」自動帶入：備料清單裡這個編號已經備好、還沒出貨的合計
+const preparedTotal = code => picks.filter(p => p.code === code && !p.done).reduce((a, p) => a + preparedOf(p), 0);
 // 這個倉這次盤點（最後一次結束之後）的「地上／已備貨」
 function lastFinish(wh) {
   return finishRows.filter(r => String(r['倉別']).padStart(2, '0') === wh).reduce((a, r) => (String(r['時間']) > a ? String(r['時間']) : a), '');
@@ -1059,7 +1033,7 @@ function openCount(code) {
   const d = detailOf(countWh, x.g.code), auto = preparedTotal(x.g.code);
   if (d) { $('cdQty').value = d['地上']; $('cdPrep').value = d['已備貨'] || ''; }
   else { $('cdPrep').value = auto || ''; $('cdQty').value = x.c ? Math.max(0, x.c.actual - (auto || 0)) : ''; }   // 舊的盤點只有合計：扣掉已備貨當作地上
-  $('cdPrepHint').textContent = auto ? `備料清單裡這項已備 ${fmt(auto)}，已自動帶入（可以改）` : '';
+  $('cdPrepHint').textContent = auto ? `備料清單裡這項已備好 ${fmt(auto)}（還沒出貨），已自動帶入（可以改）` : '';
   $('cdClear').hidden = !x.c;
   cdLive();
   if (!$('countDlg').open) $('countDlg').showModal();
