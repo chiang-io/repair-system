@@ -168,7 +168,9 @@ async function load(f) {
       <table><thead><tr><th>倉別</th><th>名稱</th><th class="num">品項數</th><th class="num">結存合計</th></tr></thead><tbody>
       ${Object.keys(by).sort().map(k => `<tr><td class="mono">${esc(k)}</td><td>${esc(r.wh[k] || '')}</td><td class="num">${by[k].n}</td><td class="num">${fmt(by[k].q)}</td></tr>`).join('')}
       </tbody></table>
-      <p class="muted">「結存合計」可以和報表最後的「合計」比對，一樣就代表讀對了。${r.skipped ? `有 ${r.skipped} 行看不懂，已略過。` : ''}</p>`;
+      <p class="muted">「結存合計」可以和報表最後的「合計」比對，一樣就代表讀對了。${r.skipped ? `有 ${r.skipped} 行看不懂，已略過。` : ''}</p>
+      ${by['?'] ? '<p class="msg bad"><b>有資料認不出是哪個倉（倉別「?」）。</b>請不要上傳，把這個檔案傳給 Claude 看看。</p>' : ''}
+      ${Object.keys(by).length < 5 ? `<p class="msg bad">⚠ 這份只有 <b>${Object.keys(by).sort().join('、')}</b> 倉。上傳後，網站上其他倉的資料會<b>不見</b>。通常要匯出全部的倉（01、02、03、04、06）。</p>` : ''}`;
     $('s1').classList.add('done'); $('s2').classList.remove('off');
     checkPw();
     if (!$('pw1').value) $('pw1').focus();
@@ -201,6 +203,20 @@ $('make').onclick = async () => {
   const pw = $('pw1').value;
   if (saved && pw !== saved && !confirm('密碼和上次不一樣。\n\n換密碼後，每支手機都要重新輸入新密碼。確定要換嗎？')) return;
   $('makeMsg').textContent = '加密中…'; $('makeMsg').className = 'msg';
+  // 和網站上現在的資料比：新報表少了哪些倉？
+  try {
+    const site = await siteInfo();
+    if (site && !site.error) {
+      const old = await decryptData(site, pw).catch(() => null);
+      if (old) {
+        const now = new Set(parsed.rows.map(x => x[0]));
+        const lost = [...new Set(old.rows.map(x => x[0]))].filter(w => !now.has(w)).sort();
+        if (lost.length && !confirm(`這份新報表沒有 ${lost.map(w => `${w}${old.wh[w] || ''}`).join('、')}。\n\n上傳後，這些倉的資料會從大家的手機上消失。\n\n確定只用這份嗎？（建議按「取消」，回 ERP 匯出全部的倉）`)) {
+          $('makeMsg').textContent = '已取消。請匯出包含全部倉的報表再試一次。'; $('makeMsg').className = 'msg bad'; return;
+        }
+      }
+    }
+  } catch (e) { /* 連不上網站就不檢查 */ }
   try {
     const { skipped, ...obj } = parsed;
     obj.uploadedAt = new Date().toISOString();

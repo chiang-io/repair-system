@@ -89,6 +89,9 @@ function parseSheetRows(allRows) {
     if ((m = text.match(/倉庫名稱\s*[:：]?\s*(.+?)\s*[(（]\s*([0-9A-Za-z]+)\s*[)）]/))) {
       wh = m[2]; whNames[wh] = m[1].trim(); continue;
     }
+    // ERP 匯出的 Excel：「倉庫名稱:」和「新品倉(02)」在不同格（甚至不同列）
+    const whCell = cells.map(c => c.match(/^(\S{1,12}?倉)\s*[(（]\s*([0-9A-Za-z]+)\s*[)）]$/)).find(Boolean);
+    if (whCell) { wh = whCell[2]; whNames[wh] = whCell[1]; continue; }
     const iCode = find(cells, /^(產品編號|產品代號|料號|品號|編號)$/), iName = find(cells, /品名/);
     if (iCode >= 0 && iName >= 0) {
       col = {
@@ -102,7 +105,8 @@ function parseSheetRows(allRows) {
     }
     if (!col || /合\s*計|總\s*計/.test(text)) continue;
     const code = cells[col.code];
-    if (!code || !/^[A-Za-z0-9]/.test(code)) { skipped++; continue; }
+    if (!code) continue;                                   // 頁首、空白列
+    if (!/^[A-Za-z0-9]/.test(code)) { skipped++; continue; }
     const num = v => { const n = parseFloat(String(v).replace(/,/g, '')); return isNaN(n) ? null : n; };
     const qty = col.qty >= 0 ? num(cells[col.qty]) : null;
     if (qty === null) { skipped++; continue; }
@@ -113,7 +117,10 @@ function parseSheetRows(allRows) {
       const nm = v.replace(/[(（]?\s*\d+\s*[)）]?/, '').trim();
       if (nm && !whNames[w]) whNames[w] = nm;
     }
-    const name = [cells[col.name], col.spec >= 0 ? cells[col.spec] : ''].filter(Boolean).join(' ');
+    // 規格（熱浸、鍍鋅…）有時在沒有標題的欄位：品名和數量之間有字的格子都接起來
+    const specs = col.spec >= 0 ? [cells[col.spec]]
+      : cells.slice(col.name + 1, col.qty >= 0 ? col.qty : undefined).filter(c => c && c !== cells[col.code]);
+    const name = [cells[col.name], ...specs].filter(Boolean).join(' ');
     rows.push([w || '?', code, name, qty, col.wt >= 0 ? num(cells[col.wt]) : null]);
   }
   return { rows, whNames, date, skipped };
