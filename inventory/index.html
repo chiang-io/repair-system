@@ -272,6 +272,8 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
     <div class="sys" id="pickStock"></div>
     <label class="f" for="pickQty">要備幾支／個</label>
     <input id="pickQty" type="number" inputmode="numeric" step="any" min="0" required placeholder="數量">
+    <label class="f" for="pickDone">已經備好幾支（選填）</label>
+    <input id="pickDone" type="number" inputmode="numeric" step="any" min="0" placeholder="還沒備就空著">
     <label class="f" for="pickCust">給哪個客戶（選填）</label>
     <input id="pickCust" type="text" list="custList" autocomplete="off" placeholder="客戶名稱">
     <datalist id="custList"></datalist>
@@ -680,7 +682,7 @@ function openPick(code) {
   $('pickName').textContent = g.name;
   $('pickCode').textContent = code;
   $('pickStock').textContent = '庫存：' + stockText(code);
-  $('pickQty').value = ''; $('pickLive').textContent = '';
+  $('pickQty').value = ''; $('pickDone').value = ''; $('pickLive').textContent = '';
   renderCustChips();
   markCust();
   $('pickDlg').showModal();
@@ -699,15 +701,27 @@ $('pickForm').onsubmit = async e => {
   if (pickSending) return;
   pickSending = true;
   const customer = $('pickCust').value.trim();
+  const doneN = parseFloat($('pickDone').value);
   const btn = $('pickForm').querySelector('[type=submit]'); btn.disabled = true; btn.textContent = '加入中…';
   try {
+    const before = new Set(picks.map(p => p.id));
     applyShared(await repApi({ action: 'pickAdd', pick: { ...pickTarget, qty, customer } }));
     if (!picksOk) throw Object.assign(new Error('Google 那邊的程式還沒更新，備料清單暫時不能用'), { code: 'old' });
+    // 加入時就填了「已備」：找到剛加入的那筆，記下已備；備滿直接打勾
+    if (!isNaN(doneN) && doneN > 0) {
+      const np = picks.filter(p => !before.has(p.id) && p.code === pickTarget.code && (p.customer || '') === customer)
+        .sort((a, b) => String(b.at).localeCompare(String(a.at)))[0];
+      if (np) {
+        await tPut('備貨', { pick: np.id, 編號: np.code, 已備: doneN }).catch(() => {});
+        if (doneN >= qty) { np.done = true; savePicks(); await pickAction({ action: 'pickSet', id: np.id, status: '已備' }); }
+      }
+    }
     if (customer) {
       store.set('inv-customers', [customer, ...store.get('inv-customers', []).filter(c => c !== customer)].slice(0, 20));
       store.set('inv-customers-hidden', store.get('inv-customers-hidden', []).filter(c => c !== customer));
     }
-    $('pickDlg').close(); toast(`已加入${customer ? ` ${customer}` : ''}的備料`);
+    $('pickDlg').close();
+    toast(`已加入${customer ? ` ${customer}` : ''}的備料` + (!isNaN(doneN) && doneN > 0 ? (doneN >= qty ? '，已備滿 ✅' : `，已備 ${fmt(doneN)}，還差 ${fmt(qty - doneN)}`) : ''));
   } catch (err) {
     $('pickLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有加入：連不上網路，請有訊號時再按一次。')}</span>`;
   } finally { pickSending = false; btn.disabled = false; btn.textContent = '加入'; }
