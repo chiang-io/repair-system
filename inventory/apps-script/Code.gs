@@ -1,5 +1,5 @@
 /**
- * 庫存查詢：共用的庫存資料、數量回報與備料清單
+ * 庫存查詢：共用的庫存資料、數量回報、備料清單與盤點
  *
  * 第一次設定：
  * 1. 建一個 Google 試算表，選「擴充功能 → Apps Script」。
@@ -15,7 +15,7 @@
  *   版本選「新版本」→「部署」。不要用「新增部署作業」，那會產生新網址。
  *
  * 庫存資料（電腦上傳頁按「上傳」，已用公司密碼加密）存在「庫存資料」工作表，
- * 回報寫在「回報」工作表，備料寫在「備料」工作表。
+ * 回報寫在「回報」工作表，備料寫在「備料」工作表，盤點寫在「盤點」工作表。
  * 按 ✕ 或清掉的只改狀態，不會刪除列。
  * 備料的「客戶」欄會存客戶名稱：試算表只在擁有者的 Google 帳號裡，
  * 客戶資料絕對不要放進 GitHub。
@@ -24,19 +24,21 @@ const PASSWORD = '在這裡填公司密碼';
 
 const REPORT = { name: '回報', cols: ['id', '時間', '編號', '品名', '倉別', '系統數量', '實際數量', '原因', '備註', '報表日期', '狀態', '處理時間'] };
 const PICK = { name: '備料', cols: ['id', '時間', '客戶', '編號', '品名', '數量', '狀態', '處理時間'] };
+const COUNT = { name: '盤點', cols: ['id', '時間', '倉別', '編號', '品名', '系統數量', '實盤數量', '報表日期', '狀態', '結束時間'] };
+const COUNTING = '盤點中', FINISHED = '已結束';  // 盤點
 const DATA_SHEET = '庫存資料', CHUNK = 45000;   // 加密後的資料很長，一格最多 5 萬字，分段存
 const OPEN = '未處理', DONE = '已處理';           // 回報
 const TODO = '未備', READY = '已備', GONE = '清掉'; // 備料
 
 function doGet() {
-  return out_({ ok: true, hello: '庫存回報', version: 4 });
+  return out_({ ok: true, hello: '庫存回報', version: 5 });
 }
 
 function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad request' }); }
   // 讀庫存資料不用密碼：資料本身已經加密，手機要先拿到檔案才能請使用者輸入密碼
-  if (req.action === 'dataGet') return out_({ ok: true, version: 4, file: dataGet_() });
+  if (req.action === 'dataGet') return out_({ ok: true, version: 5, file: dataGet_() });
   if (String(req.pass) !== PASSWORD) return out_({ ok: false, error: 'badpass' });
   if (req.action === 'dataPut') {
     const f = req.file;
@@ -44,12 +46,12 @@ function doPost(e) {
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try { dataPut_(JSON.stringify(f)); } finally { lock.releaseLock(); }
     const back = dataGet_();
-    return out_({ ok: true, version: 4, saved: !!back && back.uploadedAt === f.uploadedAt, date: f.date, count: f.count, uploadedAt: f.uploadedAt });
+    return out_({ ok: true, version: 5, saved: !!back && back.uploadedAt === f.uploadedAt, date: f.date, count: f.count, uploadedAt: f.uploadedAt });
   }
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    const rs = sheet_(REPORT), ps = sheet_(PICK);
+    const rs = sheet_(REPORT), ps = sheet_(PICK), cs = sheet_(COUNT);
     const a = req.action;
     if (a === 'add') {
       const r = req.report || {};
@@ -74,6 +76,22 @@ function doPost(e) {
       const rows = all_(ps), n = num_(req.qty);
       const i = rows.findIndex(r => String(r[0]) === String(req.id));
       if (i >= 0 && n !== '' && n > 0) ps.getRange(i + 2, 6).setValue(n);
+    } else if (a === 'countSet') {
+      // 記下實盤數量：同一個倉、同一個編號、還在盤點中的只留一筆（後面輸入的蓋過前面的）
+      const c = req.count || {}, rows = all_(cs);
+      const i = rows.findIndex(r => r[8] === COUNTING && String(r[2]) === String(c.wh) && String(r[3]) === String(c.code));
+      const vals = [new Date(), text_(c.wh), text_(c.code), str_(c.name), num_(c.sys), num_(c.actual), text_(c.dataDate)];
+      if (i >= 0) cs.getRange(i + 2, 2, 1, 7).setValues([vals]);
+      else cs.appendRow([id_()].concat(vals, [COUNTING, '']));
+    } else if (a === 'countClear') {
+      // 取消某一項的盤點數字（打錯了）
+      const rows = all_(cs);
+      const i = rows.findIndex(r => r[8] === COUNTING && String(r[2]) === String(req.wh) && String(r[3]) === String(req.code));
+      if (i >= 0) cs.getRange(i + 2, 9, 1, 2).setValues([['取消', new Date()]]);
+    } else if (a === 'countFinish') {
+      // 結束這個倉這次的盤點：紀錄留在試算表，App 上從頭開始
+      const rows = all_(cs);
+      rows.forEach((r, i) => { if (r[8] === COUNTING && String(r[2]) === String(req.wh)) cs.getRange(i + 2, 9, 1, 2).setValues([[FINISHED, new Date()]]); });
     } else if (a === 'pickClearReady') {
       // 把某個客戶（或全部）已備好的清掉
       const rows = all_(ps);
@@ -82,7 +100,7 @@ function doPost(e) {
           ps.getRange(i + 2, 7, 1, 2).setValues([[GONE, new Date()]]);
       });
     }
-    return out_({ ok: true, version: 4, reports: reports_(rs), picks: picks_(ps) });
+    return out_({ ok: true, version: 5, reports: reports_(rs), picks: picks_(ps), counts: counts_(cs) });
   } finally {
     lock.releaseLock();
   }
@@ -133,6 +151,13 @@ function picks_(sh) {
   return all_(sh).filter(r => r[0] && (r[6] === TODO || r[6] === READY))
     .map(r => ({ id: String(r[0]), at: iso_(r[1]), customer: String(r[2]), code: String(r[3]),
       name: String(r[4]), qty: Number(r[5]), done: r[6] === READY }));
+}
+
+// 還在盤點中的數字
+function counts_(sh) {
+  return all_(sh).filter(r => r[0] && r[8] === COUNTING)
+    .map(r => ({ id: String(r[0]), at: iso_(r[1]), wh: String(r[2]).padStart(2, '0'), code: String(r[3]), name: String(r[4]),
+      sys: Number(r[5]), actual: Number(r[6]) }));
 }
 
 function id_() { return Utilities.getUuid().slice(0, 8); }
