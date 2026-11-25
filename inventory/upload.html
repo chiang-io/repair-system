@@ -67,7 +67,7 @@ footer{color:var(--muted);font-size:13px;padding:10px 0 40px}
 </div></header>
 
 <main class="wrap">
-  <p class="muted" style="margin-top:16px">把 ERP 的「存貨異動統計表-分倉」上傳到網站，大家的手機打開「庫存查詢」就會自動更新。整個過程大約 1 分鐘。</p>
+  <p class="muted" style="margin-top:16px">把 ERP 的「存貨異動統計表-分倉」上傳，大家的手機打開「庫存查詢」就會更新。只要知道公司密碼就能上傳，不用登入其他帳號。</p>
 
   <section class="step" id="s1">
     <h2><span class="n">1</span>選擇報表</h2>
@@ -91,24 +91,17 @@ footer{color:var(--muted);font-size:13px;padding:10px 0 40px}
   </section>
 
   <section class="step off" id="s3">
-    <h2><span class="n">3</span>下載資料檔</h2>
-    <p>按下面的按鈕，會下載一個 <b class="mono">inventory-data.json</b>（已加密）。</p>
-    <button class="btn primary" id="make">下載資料檔</button>
+    <h2><span class="n">3</span>上傳</h2>
+    <p>按下面的按鈕，資料會加密後存到公司的 Google 試算表，<b>大家的手機打開就會更新</b>。</p>
+    <button class="btn primary" id="make">上傳</button>
     <div class="msg" id="makeMsg"></div>
-  </section>
-
-  <section class="step off" id="s4">
-    <h2><span class="n">4</span>放到 GitHub</h2>
-    <ol class="howto">
-      <li>按 <a id="ghUpload" href="https://github.com/chiang-io/repair-system/upload/main/inventory" target="_blank" rel="noopener"><b>打開 GitHub 上傳頁面</b></a>（要先登入 GitHub）。</li>
-      <li>把剛剛下載的 <b class="mono">inventory-data.json</b> 拖進去。<br><span class="muted">檔名一定要是 inventory-data.json；如果下載時變成 inventory-data (1).json，請先改回來。</span></li>
-      <li>拉到最下面，按綠色的 <kbd>Commit changes</kbd>。</li>
-    </ol>
-    <p>大約等 1～2 分鐘，按下面的按鈕確認網站上的資料已經換成新的：</p>
-    <div class="site">
-      <button class="btn ghost" id="check">檢查網站上的資料</button>
-      <span id="checkMsg" class="msg"></span>
-    </div>
+    <details style="margin-top:14px" id="oldWay">
+      <summary class="muted">連不上 Google 時：改用下載檔案、放到 GitHub（要登入 GitHub）</summary>
+      <ol class="howto">
+        <li><button class="btn ghost" id="makeFile" type="button">下載資料檔</button>　會下載 <b class="mono">inventory-data.json</b>。</li>
+        <li>按 <a id="ghUpload" href="https://github.com/chiang-io/repair-system/upload/main/inventory" target="_blank" rel="noopener">打開 GitHub 上傳頁面</a>，把檔案拖進去，按綠色的 <kbd>Commit changes</kbd>。</li>
+      </ol>
+    </details>
   </section>
 
   <footer>
@@ -117,6 +110,7 @@ footer{color:var(--muted);font-size:13px;padding:10px 0 40px}
 </main>
 
 <script src="common.js"></script>
+<script src="config.js"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -131,12 +125,7 @@ $('phoneUrl').textContent = new URL('./', location.href).href;
 
 /* 網站上目前的資料（只讀明碼的日期與筆數） */
 async function siteInfo() {
-  try {
-    const r = await fetch(`${DATA_FILE}?t=${Date.now()}`, { cache: 'no-store' });
-    if (r.status === 404) return null;
-    if (!r.ok) throw new Error(r.status);
-    return await r.json();
-  } catch (e) { return { error: true }; }
+  try { return (await fetchDataFile()).file; } catch (e) { return { error: true }; }
 }
 const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function describe(f) {
@@ -199,11 +188,11 @@ function checkPw() {
 $('pw1').oninput = $('pw2').oninput = checkPw;
 
 /* 3. 加密並下載 */
-$('make').onclick = async () => {
-  if (!parsed || !checkPw()) return;
+async function prepare() {
+  if (!parsed || !checkPw()) return null;
   const pw = $('pw1').value;
-  if (saved && pw !== saved && !confirm('密碼和上次不一樣。\n\n換密碼後，每支手機都要重新輸入新密碼。確定要換嗎？')) return;
-  $('makeMsg').textContent = '加密中…'; $('makeMsg').className = 'msg';
+  if (saved && pw !== saved && !confirm('密碼和上次不一樣。\n\n換密碼後，每支手機都要重新輸入新密碼。確定要換嗎？')) return null;
+  $('makeMsg').textContent = '檢查中…'; $('makeMsg').className = 'msg';
   // 和網站上現在的資料比：新報表少了哪些倉？
   try {
     const site = await siteInfo();
@@ -213,43 +202,47 @@ $('make').onclick = async () => {
         const now = new Set(parsed.rows.map(x => x[0]));
         const lost = [...new Set(old.rows.map(x => x[0]))].filter(w => !now.has(w)).sort();
         if (lost.length && !confirm(`這份新報表沒有 ${lost.map(w => `${w}${old.wh[w] || ''}`).join('、')}。\n\n上傳後，這些倉的資料會從大家的手機上消失。\n\n確定只用這份嗎？（建議按「取消」，回 ERP 匯出全部的倉）`)) {
-          $('makeMsg').textContent = '已取消。請匯出包含全部倉的報表再試一次。'; $('makeMsg').className = 'msg bad'; return;
+          $('makeMsg').textContent = '已取消。請匯出包含全部倉的報表再試一次。'; $('makeMsg').className = 'msg bad'; return null;
         }
       }
     }
-  } catch (e) { /* 連不上網站就不檢查 */ }
+  } catch (e) { /* 連不上就不檢查 */ }
+  $('makeMsg').textContent = '加密中…';
+  const { skipped, ignored, ...obj } = parsed;
+  obj.uploadedAt = new Date().toISOString();
+  const file = await encryptData(obj, pw);
+  const back = await decryptData(file, pw);                 // 先自己解一次，確定檔案沒問題
+  if (back.rows.length !== obj.rows.length) throw new Error('加密檢查失敗');
+  return { file, pw };
+}
+$('make').onclick = async () => {
+  const btn = $('make'); btn.disabled = true;
   try {
-    const { skipped, ignored, ...obj } = parsed;
-    obj.uploadedAt = new Date().toISOString();
-    const file = await encryptData(obj, pw);
-    const back = await decryptData(file, pw);                 // 先自己解一次，確定檔案沒問題
-    if (back.rows.length !== obj.rows.length) throw new Error('加密檢查失敗');
-    const url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: 'application/json' }));
-    const a = document.createElement('a'); a.href = url; a.download = DATA_FILE; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    store.set('inv-upload-pass', pw);
-    lastUploadedAt = obj.uploadedAt;
-    $('makeMsg').textContent = `✓ 已下載 ${DATA_FILE}，接著做第 4 步。`; $('makeMsg').className = 'msg good';
-    $('s3').classList.add('done'); $('s4').classList.remove('off');
+    const p = await prepare(); if (!p) return;
+    if (!REPORT_API) throw new Error('還沒設定 Google 試算表，請改用下面的「下載資料檔」');
+    $('makeMsg').textContent = '上傳中…';
+    const j = await putDataFile(p.file, p.pw);
+    store.set('inv-upload-pass', p.pw);
+    $('makeMsg').innerHTML = `✓ <b>上傳完成</b>：${esc(j.date)} 的資料，${j.count} 筆。大家的手機打開（或按「檢查有沒有新資料」）就會更新。`;
+    $('makeMsg').className = 'msg good'; $('s3').classList.add('done');
+    $('siteNow').textContent = '網站上的資料：' + describe(p.file);
   } catch (err) {
     console.error(err);
-    $('makeMsg').textContent = '失敗：' + err.message; $('makeMsg').className = 'msg bad';
-  }
+    $('makeMsg').textContent = '沒有上傳：' + (err.code ? err.message : err.message === 'Failed to fetch' ? '連不上 Google，請檢查網路，或改用下面的下載方式' : err.message);
+    $('makeMsg').className = 'msg bad';
+  } finally { btn.disabled = false; }
+};
+$('makeFile').onclick = async () => {
+  try {
+    const p = await prepare(); if (!p) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(p.file)], { type: 'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = DATA_FILE; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    store.set('inv-upload-pass', p.pw);
+    $('makeMsg').textContent = `✓ 已下載 ${DATA_FILE}，請照下面第 2 步放到 GitHub。`; $('makeMsg').className = 'msg good';
+  } catch (err) { $('makeMsg').textContent = '失敗：' + err.message; $('makeMsg').className = 'msg bad'; }
 };
 
-/* 4. 檢查網站是否已更新 */
-$('check').onclick = async () => {
-  const m = $('checkMsg'); m.textContent = '檢查中…'; m.className = 'msg';
-  const f = await siteInfo();
-  $('siteNow').textContent = '網站上的資料：' + describe(f);
-  if (f && !f.error && lastUploadedAt && f.uploadedAt === lastUploadedAt) {
-    m.textContent = '✓ 網站已經是新資料了，手機打開就會更新。'; m.className = 'msg good'; $('s4').classList.add('done');
-  } else if (f && f.error) {
-    m.textContent = '連不上網站，等一下再試。'; m.className = 'msg bad';
-  } else {
-    m.textContent = `網站上還是：${describe(f)}。GitHub 大約要 1～2 分鐘，請稍等再按一次。`; m.className = 'msg';
-  }
-};
 </script>
 </body>
 </html>

@@ -718,7 +718,7 @@ function askPass(msg) {
 }
 async function applyFile(file, pw) {
   const d = await decryptData(file, pw);
-  const isUpdate = !!data && data.date !== d.date;
+  const isUpdate = !!data && data.uploadedAt !== d.uploadedAt;
   data = d; pass = pw;
   if (!store.set('inv-data', data)) toast('這個瀏覽器不能儲存（例如無痕模式），關掉後要重新下載。');
   store.set('inv-pass', pass);
@@ -732,17 +732,15 @@ async function sync(manual) {
   try {
     let file = null;
     try {
-      const r = await fetch(`${DATA_FILE}?t=${Date.now()}`, { cache: 'no-store' });
-      if (r.ok) file = await r.json();
-      else if (r.status !== 404) throw new Error(r.status);
+      file = (await fetchDataFile()).file;
     } catch (e) {
       if (!data) emptyState('stOffline'); else if (manual) toast('連不上網路，先用手機裡的資料');
       return;
     }
-    if (!file) { if (!data) emptyState('stNone'); else if (manual) toast('網站上沒有資料檔'); return; }
+    if (!file) { if (!data) emptyState('stNone'); else if (manual) toast('還沒有人上傳資料'); return; }
     if (data && data.uploadedAt === file.uploadedAt) { if (manual) toast('已經是最新的資料'); return; }
     if (!pass) { pending = file; askPass(); return; }
-    try { await applyFile(file, pass); if (manual && data.uploadedAt === file.uploadedAt) toast('已經是最新的資料'); }
+    try { await applyFile(file, pass); }
     catch (e) {
       pending = file;
       askPass(e.badPassword ? (data ? '密碼可能換了，請輸入新密碼。在輸入之前，仍然顯示舊的資料。' : '') : '資料檔讀不出來：' + e.message);

@@ -1,5 +1,5 @@
 /**
- * 庫存查詢：共用的數量回報與備料清單
+ * 庫存查詢：共用的庫存資料、數量回報與備料清單
  *
  * 第一次設定：
  * 1. 建一個 Google 試算表，選「擴充功能 → Apps Script」。
@@ -14,6 +14,7 @@
  *   貼上新程式、改好 PASSWORD、存檔 →「部署 → 管理部署作業」→ 鉛筆圖示 →
  *   版本選「新版本」→「部署」。不要用「新增部署作業」，那會產生新網址。
  *
+ * 庫存資料（電腦上傳頁按「上傳」，已用公司密碼加密）存在「庫存資料」工作表，
  * 回報寫在「回報」工作表，備料寫在「備料」工作表。
  * 按 ✕ 或清掉的只改狀態，不會刪除列。
  * 備料的「客戶」欄會存客戶名稱：試算表只在擁有者的 Google 帳號裡，
@@ -23,17 +24,28 @@ const PASSWORD = '在這裡填公司密碼';
 
 const REPORT = { name: '回報', cols: ['id', '時間', '編號', '品名', '倉別', '系統數量', '實際數量', '原因', '備註', '報表日期', '狀態', '處理時間'] };
 const PICK = { name: '備料', cols: ['id', '時間', '客戶', '編號', '品名', '數量', '狀態', '處理時間'] };
+const DATA_SHEET = '庫存資料', CHUNK = 45000;   // 加密後的資料很長，一格最多 5 萬字，分段存
 const OPEN = '未處理', DONE = '已處理';           // 回報
 const TODO = '未備', READY = '已備', GONE = '清掉'; // 備料
 
 function doGet() {
-  return out_({ ok: true, hello: '庫存回報', version: 2 });
+  return out_({ ok: true, hello: '庫存回報', version: 3 });
 }
 
 function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad request' }); }
+  // 讀庫存資料不用密碼：資料本身已經加密，手機要先拿到檔案才能請使用者輸入密碼
+  if (req.action === 'dataGet') return out_({ ok: true, version: 3, file: dataGet_() });
   if (String(req.pass) !== PASSWORD) return out_({ ok: false, error: 'badpass' });
+  if (req.action === 'dataPut') {
+    const f = req.file;
+    if (!f || f.format !== 'inventory-data' || !f.data) return out_({ ok: false, error: 'bad file' });
+    const lock = LockService.getScriptLock(); lock.waitLock(20000);
+    try { dataPut_(JSON.stringify(f)); } finally { lock.releaseLock(); }
+    const back = dataGet_();
+    return out_({ ok: true, version: 3, saved: !!back && back.uploadedAt === f.uploadedAt, date: f.date, count: f.count, uploadedAt: f.uploadedAt });
+  }
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
@@ -59,10 +71,26 @@ function doPost(e) {
           ps.getRange(i + 2, 7, 1, 2).setValues([[GONE, new Date()]]);
       });
     }
-    return out_({ ok: true, version: 2, reports: reports_(rs), picks: picks_(ps) });
+    return out_({ ok: true, version: 3, reports: reports_(rs), picks: picks_(ps) });
   } finally {
     lock.releaseLock();
   }
+}
+
+// 加密後的庫存資料：分成好幾格存在 A 欄
+function dataPut_(text) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(DATA_SHEET) || ss.insertSheet(DATA_SHEET);
+  sh.clear();
+  const parts = [];
+  for (let i = 0; i < text.length; i += CHUNK) parts.push([text.slice(i, i + CHUNK)]);
+  sh.getRange(1, 1, parts.length, 1).setNumberFormat('@').setValues(parts);
+}
+function dataGet_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(DATA_SHEET);
+  if (!sh || sh.getLastRow() < 1) return null;
+  const text = sh.getRange(1, 1, sh.getLastRow(), 1).getValues().map(r => r[0]).join('');
+  try { return JSON.parse(text); } catch (e) { return null; }
 }
 
 function sheet_(def) {

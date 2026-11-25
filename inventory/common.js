@@ -173,3 +173,38 @@ async function decryptData(file, pass) {
   catch (e) { const err = new Error('密碼不對'); err.badPassword = true; throw err; }
   return JSON.parse(new TextDecoder().decode(pt));
 }
+
+/* ---------- 資料檔放在哪 ---------- */
+// 先找 Google 試算表（電腦上傳頁按「上傳」存的），沒有才用 GitHub 上的 inventory-data.json（舊方法）。
+// 回傳 { file, from }；兩邊都沒有 → file 為 null；完全連不上 → 丟出錯誤。
+async function fetchDataFile() {
+  let apiOk = false;
+  if (typeof REPORT_API !== 'undefined' && REPORT_API) {
+    try {
+      const r = await fetch(REPORT_API, { method: 'POST', body: JSON.stringify({ action: 'dataGet' }) });
+      const j = await r.json();
+      apiOk = true;
+      if (j.ok && j.file) return { file: j.file, from: 'google' };
+    } catch (e) { /* 連不上 Google，改試 GitHub */ }
+  }
+  try {
+    const r = await fetch(`${DATA_FILE}?t=${Date.now()}`, { cache: 'no-store' });
+    if (r.ok) return { file: await r.json(), from: 'github' };
+    if (r.status === 404) return { file: null };
+    throw new Error(r.status);
+  } catch (e) {
+    if (apiOk) return { file: null };
+    throw e;
+  }
+}
+// 電腦上傳頁按「上傳」：存到 Google 試算表（要公司密碼）
+async function putDataFile(file, pass) {
+  const r = await fetch(REPORT_API, { method: 'POST', body: JSON.stringify({ action: 'dataPut', pass, file }) });
+  const j = await r.json();
+  if (!j.ok) {
+    const e = new Error(j.error === 'badpass' ? '密碼和 Google 試算表裡的不一樣，沒有上傳' : (j.error || '上傳失敗'));
+    e.code = j.error; throw e;
+  }
+  if (!j.saved) throw new Error('Google 那邊沒有存起來，請再試一次');
+  return j;
+}
