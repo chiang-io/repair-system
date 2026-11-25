@@ -202,7 +202,7 @@ async function putDataFile(file, pass) {
   const r = await fetch(REPORT_API, { method: 'POST', body: JSON.stringify({ action: 'dataPut', pass, file }) });
   const j = await r.json();
   if (!j.ok) {
-    const e = new Error(j.error === 'badpass' ? '密碼和 Google 試算表裡的不一樣，沒有上傳' : (j.error || '上傳失敗'));
+    const e = new Error(j.error === 'badpass' ? '密碼和 Google 試算表裡的不一樣，沒有上傳' : j.error === 'nopass' ? 'Google 試算表「設定」工作表的 B1 還沒填公司密碼，沒有上傳' : (j.error || '上傳失敗'));
     e.code = j.error; throw e;
   }
   if (!j.saved) throw new Error('Google 那邊沒有存起來，請再試一次');

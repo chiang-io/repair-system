@@ -315,8 +315,8 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   </form>
 </dialog>
 
-<script src="common.js?v=5"></script>
-<script src="config.js?v=5"></script>
+<script src="common.js?v=6"></script>
+<script src="config.js?v=6"></script>
 <script>
 'use strict';
 const MAIN_WH = ['02', '06'];          // 倉管常用：02 新品倉、06 五金倉（第一次打開預設選這兩個）
@@ -792,7 +792,7 @@ function saveReports() {
 async function repApi(body) {
   const r = await fetch(REPORT_API, { method: 'POST', body: JSON.stringify({ ...body, pass }) });
   const j = await r.json();
-  if (!j.ok) { const e = new Error(j.error === 'badpass' ? '密碼和試算表裡的不一樣' : (j.error || '失敗了')); e.code = j.error; throw e; }
+  if (!j.ok) { const e = new Error(j.error === 'badpass' ? '密碼和試算表裡的不一樣' : j.error === 'nopass' ? 'Google 試算表「設定」工作表的 B1 還沒填公司密碼' : (j.error || '失敗了')); e.code = j.error; throw e; }
   return j;
 }
 // Google 回傳的回報與備料一起更新

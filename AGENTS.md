@@ -21,7 +21,9 @@
 ## 修改 inventory/ 的注意事項
 
 - 改了 `inventory/common.js` 或 `inventory/config.js`，要把 `index.html`、`upload.html` 裡的 `?v=` 版本號和 `sw.js` 的 `CACHE`、`SHELL` 一起加一，不然 GitHub Pages 的快取會讓新舊檔案混在一起。
-- 改了 `inventory/apps-script/Code.gs`，使用者要在 Apps Script 貼上新程式、把 PASSWORD 改回公司密碼，再用「管理部署作業 → 編輯 → 新版本」部署（網址不變）。
+- **盡量不要再改 `inventory/apps-script/Code.gs`**：使用者每次都要重新貼程式、部署，很麻煩。新功能要存共用資料時，一律用萬用資料表動作 `tList`／`tPut`／`tDel`（參數 `table`，存在「表_xxx」工作表，欄位自動增加），不要新增 action。
+- 公司密碼存在試算表「設定」工作表的 B1（程式裡的 PASSWORD 沒改時才讀它），所以貼新程式時不用改密碼那行。
+- 真的必須改 `Code.gs` 時，使用者要貼上新程式、存檔，再用「管理部署作業 → 編輯 → 新版本」部署（網址不變）；`version` 要加一，App 用它判斷 Google 那邊是不是新版。
 
 ## 客戶資料：絕對禁止上傳
 

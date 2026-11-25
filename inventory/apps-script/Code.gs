@@ -4,14 +4,15 @@
  * 第一次設定：
  * 1. 建一個 Google 試算表，選「擴充功能 → Apps Script」。
  * 2. 把這整份程式貼上去，取代原本的內容。
- * 3. 把下面的 PASSWORD 改成公司密碼（和手機輸入的一樣）。
+ * 3. 公司密碼寫在試算表的「設定」工作表 B1 格（第一次執行會自動建立這張工作表）。
+ *    也可以直接改下面的 PASSWORD，兩個都有的話以 PASSWORD 為準。
  * 4. 按「部署 → 新增部署作業 → 網頁應用程式」，
  *    執行身分選「我」，誰可以存取選「所有人」，按「部署」。
  * 5. 把產生的網址（https://script.google.com/macros/s/.../exec）
  *    填到 inventory/config.js 的 REPORT_API。
  *
  * 之後更新程式（網址不變）：
- *   貼上新程式、改好 PASSWORD、存檔 →「部署 → 管理部署作業」→ 鉛筆圖示 →
+ *   貼上新程式、存檔（密碼在「設定」工作表，不用再改）→「部署 → 管理部署作業」→ 鉛筆圖示 →
  *   版本選「新版本」→「部署」。不要用「新增部署作業」，那會產生新網址。
  *
  * 庫存資料（電腦上傳頁按「上傳」，已用公司密碼加密）存在「庫存資料」工作表，
@@ -21,6 +22,16 @@
  * 客戶資料絕對不要放進 GitHub。
  */
 const PASSWORD = '在這裡填公司密碼';
+const SETTINGS = '設定';
+
+// 公司密碼：先看上面的 PASSWORD，沒改的話讀「設定」工作表 B1
+function password_() {
+  if (PASSWORD && PASSWORD !== '在這裡填公司密碼') return PASSWORD;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(SETTINGS);
+  if (!sh) { sh = ss.insertSheet(SETTINGS); sh.getRange(1, 1, 1, 2).setValues([['公司密碼（填在右邊 B1）', '']]); }
+  return String(sh.getRange(1, 2).getValue() || '').trim();
+}
 
 const REPORT = { name: '回報', cols: ['id', '時間', '編號', '品名', '倉別', '系統數量', '實際數量', '原因', '備註', '報表日期', '狀態', '處理時間'] };
 const PICK = { name: '備料', cols: ['id', '時間', '客戶', '編號', '品名', '數量', '狀態', '處理時間'] };
@@ -31,22 +42,29 @@ const OPEN = '未處理', DONE = '已處理';           // 回報
 const TODO = '未備', READY = '已備', GONE = '清掉'; // 備料
 
 function doGet() {
-  return out_({ ok: true, hello: '庫存回報', version: 5 });
+  return out_({ ok: true, hello: '庫存回報', version: 6 });
 }
 
 function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad request' }); }
   // 讀庫存資料不用密碼：資料本身已經加密，手機要先拿到檔案才能請使用者輸入密碼
-  if (req.action === 'dataGet') return out_({ ok: true, version: 5, file: dataGet_() });
-  if (String(req.pass) !== PASSWORD) return out_({ ok: false, error: 'badpass' });
+  if (req.action === 'dataGet') return out_({ ok: true, version: 6, file: dataGet_() });
+  const pw = password_();
+  if (!pw) return out_({ ok: false, error: 'nopass' });
+  if (String(req.pass) !== pw) return out_({ ok: false, error: 'badpass' });
+  // 萬用資料表：以後新功能都用這幾個動作存資料，不用再改這份程式
+  if (req.action === 'tList' || req.action === 'tPut' || req.action === 'tDel') {
+    const lock = LockService.getScriptLock(); lock.waitLock(10000);
+    try { return out_(table_(req)); } finally { lock.releaseLock(); }
+  }
   if (req.action === 'dataPut') {
     const f = req.file;
     if (!f || f.format !== 'inventory-data' || !f.data) return out_({ ok: false, error: 'bad file' });
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try { dataPut_(JSON.stringify(f)); } finally { lock.releaseLock(); }
     const back = dataGet_();
-    return out_({ ok: true, version: 5, saved: !!back && back.uploadedAt === f.uploadedAt, date: f.date, count: f.count, uploadedAt: f.uploadedAt });
+    return out_({ ok: true, version: 6, saved: !!back && back.uploadedAt === f.uploadedAt, date: f.date, count: f.count, uploadedAt: f.uploadedAt });
   }
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -100,7 +118,7 @@ function doPost(e) {
           ps.getRange(i + 2, 7, 1, 2).setValues([[GONE, new Date()]]);
       });
     }
-    return out_({ ok: true, version: 5, reports: reports_(rs), picks: picks_(ps), counts: counts_(cs) });
+    return out_({ ok: true, version: 6, reports: reports_(rs), picks: picks_(ps), counts: counts_(cs) });
   } finally {
     lock.releaseLock();
   }
@@ -159,6 +177,34 @@ function counts_(sh) {
     .map(r => ({ id: String(r[0]), at: iso_(r[1]), wh: String(r[2]).padStart(2, '0'), code: String(r[3]), name: String(r[4]),
       sys: Number(r[5]), actual: Number(r[6]) }));
 }
+
+// ---------- 萬用資料表（工作表名稱「表_xxx」，第一列是欄位名稱，第一欄是 id） ----------
+function table_(req) {
+  const name = String(req.table || '');
+  if (!/^[\w一-鿿]{1,20}$/.test(name)) return { ok: false, error: 'bad table' };
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName('表_' + name);
+  if (!sh) { sh = ss.insertSheet('表_' + name); sh.appendRow(['id', '時間']); sh.setFrozenRows(1); }
+  let head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  if (req.action === 'tPut') {
+    const row = req.row || {}, keys = Object.keys(row).filter(k => k !== 'id' && k !== '時間' && /^[\w一-鿿]{1,20}$/.test(k)).slice(0, 30);
+    const add = keys.filter(k => head.indexOf(k) < 0);
+    if (add.length) { sh.getRange(1, head.length + 1, 1, add.length).setValues([add]); head = head.concat(add); }
+    const ids = all_(sh).map(r => String(r[0]));
+    let i = row.id ? ids.indexOf(String(row.id)) : -1;
+    const id = i >= 0 ? String(row.id) : id_();
+    const vals = head.map((h, j) => h === 'id' ? id : h === '時間' ? new Date() : (keys.indexOf(h) >= 0 ? cell_(row[h]) : (i >= 0 ? null : '')));
+    if (i >= 0) vals.forEach((v, j) => { if (v !== null) sh.getRange(i + 2, j + 1).setValue(v); });
+    else sh.appendRow(vals);
+  } else if (req.action === 'tDel') {
+    const ids = all_(sh).map(r => String(r[0])), i = ids.indexOf(String(req.id));
+    if (i >= 0) sh.deleteRow(i + 2);
+  }
+  const rows = all_(sh).filter(r => r[0]).map(r => { const o = {}; head.forEach((h, j) => { o[h] = r[j] instanceof Date ? r[j].toISOString() : r[j]; }); return o; });
+  return { ok: true, version: 6, table: name, rows };
+}
+// 數字存成數字，其他一律存成文字（避免 06 變 6、日期被轉掉）
+function cell_(v) { return typeof v === 'number' && isFinite(v) ? v : text_(v); }
 
 function id_() { return Utilities.getUuid().slice(0, 8); }
 // 文字最多 200 字；開頭是 = + - @ 的加上 ' 當成文字，避免被當成公式
