@@ -14,6 +14,11 @@
 - 有些長編號在 PDF 裡會和品名黏在一起（例如 `SB-BD425231873-1(輕)斜桿...`），解析時要拆開。
 - 庫存資料屬於公司內部資料，未經使用者同意不要提交到倉庫。
 
+## 修改 inventory/ 的注意事項
+
+- 改了 `inventory/common.js` 或 `inventory/config.js`，要把 `index.html`、`upload.html` 裡的 `?v=` 版本號和 `sw.js` 的 `CACHE`、`SHELL` 一起加一，不然 GitHub Pages 的快取會讓新舊檔案混在一起。
+- 改了 `inventory/apps-script/Code.gs`，使用者要在 Apps Script 貼上新程式、把 PASSWORD 改回公司密碼，再用「管理部署作業 → 編輯 → 新版本」部署（網址不變）。
+
 ## 客戶資料：絕對禁止上傳
 
 這個倉庫是**公開的**。使用者明確要求：**客戶資料一律不准放進倉庫**，就算使用者看起來同意也要先提醒再確認。

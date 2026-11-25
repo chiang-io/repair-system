@@ -109,8 +109,8 @@ footer{color:var(--muted);font-size:13px;padding:10px 0 40px}
   </footer>
 </main>
 
-<script src="common.js"></script>
-<script src="config.js"></script>
+<script src="common.js?v=5"></script>
+<script src="config.js?v=5"></script>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
@@ -125,12 +125,12 @@ $('phoneUrl').textContent = new URL('./', location.href).href;
 
 /* 網站上目前的資料（只讀明碼的日期與筆數） */
 async function siteInfo() {
-  try { return (await fetchDataFile()).file; } catch (e) { return { error: true }; }
+  try { return (await fetchDataFile()).file; } catch (e) { return { error: true, msg: e.message }; }
 }
 const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 function describe(f) {
   if (!f) return '還沒有資料';
-  if (f.error) return '連不上網站';
+  if (f.error) return `連不上網站（${f.msg || '原因不明'}）`;
   return `${f.date}（${f.count} 筆，${when(f.uploadedAt)} 上傳）`;
 }
 (async () => { $('siteNow').textContent = '網站上的資料：' + describe(await siteInfo()); })();
