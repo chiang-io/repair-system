@@ -4,6 +4,8 @@ const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js
 const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
 const DATA_FILE = 'inventory-data.json';   // 放在 inventory/ 資料夾，手機從這裡同步
+// 只保留這幾個倉；報表裡的其他倉自動略過（要加新的倉，使用者會另外交代）
+const KEEP_WH = ['01', '02', '03', '04', '06'];
 
 function loadScript(src) {
   return new Promise((ok, fail) => {
@@ -140,7 +142,11 @@ async function readReportFile(f) {
   const r = isPdf ? await readPdf(buf) : await readSheet(buf);
   const d = new Date(f.lastModified || Date.now());
   const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return { date: r.date || iso, dateSource: r.date ? '列印日期' : '檔案日期', file: f.name, wh: r.whNames, rows: r.rows, skipped: r.skipped };
+  const ignored = {};
+  const rows = r.rows.filter(x => KEEP_WH.includes(x[0]) || (ignored[x[0]] = (ignored[x[0]] || 0) + 1, false));
+  const wh = {}; KEEP_WH.forEach(w => { if (r.whNames[w]) wh[w] = r.whNames[w]; });
+  const ignoredList = Object.keys(ignored).sort().map(w => ({ wh: w, name: r.whNames[w] || '', n: ignored[w] }));
+  return { date: r.date || iso, dateSource: r.date ? '列印日期' : '檔案日期', file: f.name, wh, rows, skipped: r.skipped, ignored: ignoredList };
 }
 
 /* ---------- 加密：倉庫是公開的，資料檔一定要加密 ---------- */

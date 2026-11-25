@@ -170,7 +170,8 @@ async function load(f) {
       </tbody></table>
       <p class="muted">「結存合計」可以和報表最後的「合計」比對，一樣就代表讀對了。${r.skipped ? `有 ${r.skipped} 行看不懂，已略過。` : ''}</p>
       ${by['?'] ? '<p class="msg bad"><b>有資料認不出是哪個倉（倉別「?」）。</b>請不要上傳，把這個檔案傳給 Claude 看看。</p>' : ''}
-      ${Object.keys(by).length < 5 ? `<p class="msg bad">⚠ 這份只有 <b>${Object.keys(by).sort().join('、')}</b> 倉。上傳後，網站上其他倉的資料會<b>不見</b>。通常要匯出全部的倉（01、02、03、04、06）。</p>` : ''}`;
+      ${r.ignored.length ? `<p class="muted">已略過不需要的倉：${r.ignored.map(x => `${esc(x.wh)} ${esc(x.name)}（${x.n} 筆）`).join('、')}。只保留 ${KEEP_WH.join('、')}。</p>` : ''}
+      ${KEEP_WH.some(w => !by[w]) ? `<p class="msg bad">⚠ 這份缺少 <b>${KEEP_WH.filter(w => !by[w]).join('、')}</b> 倉。上傳後，網站上這些倉的資料會<b>不見</b>。請從 ERP 匯出包含 ${KEEP_WH.join('、')} 的報表。</p>` : ''}`;
     $('s1').classList.add('done'); $('s2').classList.remove('off');
     checkPw();
     if (!$('pw1').value) $('pw1').focus();
@@ -218,7 +219,7 @@ $('make').onclick = async () => {
     }
   } catch (e) { /* 連不上網站就不檢查 */ }
   try {
-    const { skipped, ...obj } = parsed;
+    const { skipped, ignored, ...obj } = parsed;
     obj.uploadedAt = new Date().toISOString();
     const file = await encryptData(obj, pw);
     const back = await decryptData(file, pw);                 // 先自己解一次，確定檔案沒問題
