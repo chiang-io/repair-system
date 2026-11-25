@@ -116,6 +116,11 @@ footer .row.btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 /* 數量回報 */
 .srow .rep{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:2px 8px;font-size:13px;white-space:nowrap}
 .repnote{font-size:13px;color:var(--warn);margin:-2px 0 4px 36px}
+.repnote.ok{color:var(--good)}
+.rcard .check{font-size:14px;margin-top:6px;padding:6px 10px;border-radius:8px;background:var(--sunk)}
+.rcard .check.fixed{color:var(--good);font-weight:700}
+.rcard .check.still{color:var(--warn)}
+.rcard .check.gone{color:var(--muted)}
 .diff{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .diff.d-less{color:var(--bad)} .diff.d-more{color:var(--warn)}
 .rcard .line{font-size:15px;margin-top:4px}
@@ -567,9 +572,23 @@ function diffHtml(r) {
   return `<span class="diff ${d < 0 ? 'd-less' : 'd-more'}">${d < 0 ? '少' : '多'} ${fmt(Math.abs(d))}</span>`;
 }
 const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+// 回報之後有沒有上傳新報表？新報表的數量和回報的實際數量比一比
+const ymd = v => { const d = new Date(v); return isNaN(d) ? String(v || '').slice(0, 10) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function repCheck(r) {
+  const g = index && index.groups.find(x => x.code === r.code);
+  const st = g && g.stock.find(s => s.wh === r.wh);
+  const newer = !!data && !!r.dataDate && ymd(r.dataDate) < data.date;
+  if (!st) return newer ? { kind: 'gone', text: `${data.date} 的新報表裡沒有這個品項` } : null;
+  if (st.qty === r.sys && !newer) return null;                       // 還是同一份報表
+  if (st.qty === r.actual) return { kind: 'fixed', text: `✅ 新報表已經是 ${fmt(st.qty)}，帳可能已修正，可以劃掉了` };
+  return { kind: 'still', text: `新報表 ${fmt(st.qty)}，還是不對（跟實際${st.qty > r.actual ? '多' : '少'} ${fmt(Math.abs(st.qty - r.actual))}）` };
+}
 function repNoteHtml(code, wh) {
   const r = reports.filter(x => x.code === code && x.wh === wh).pop();
-  return r ? `<div class="repnote">⚠ 有人回報：實際 ${fmt(r.actual)}（${diffHtml(r)}，${when(r.at)}）</div>` : '';
+  if (!r) return '';
+  const c = repCheck(r);
+  if (c && c.kind === 'fixed') return `<div class="repnote ok">✅ 有人回報過實際 ${fmt(r.actual)}，新報表已經一樣了</div>`;
+  return `<div class="repnote">⚠ 有人回報：實際 ${fmt(r.actual)}（${diffHtml(r)}，${when(r.at)}）</div>`;
 }
 let repTarget = null, repReason = REASONS[0], repSending = false;
 function openReport(code, wh) {
@@ -637,6 +656,7 @@ function renderReports() {
         <div class="code mono">${esc(r.code)}</div>
         <div class="sub">${esc(r.wh)} ${esc(whLabel(r.wh))}</div>
         <div class="line">系統 ${fmt(r.sys)} → 實際 <b>${fmt(r.actual)}</b>（${diffHtml(r)}）</div>
+        ${(c => c ? `<div class="check ${c.kind}">${esc(c.text)}</div>` : '')(repCheck(r))}
         <div class="sub">原因：${esc(r.reason)}${r.note ? `　備註：${esc(r.note)}` : ''}</div>
         <div class="sub">${when(r.at)} 回報</div>
       </div>
