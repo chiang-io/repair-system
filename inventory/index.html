@@ -107,6 +107,7 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .cgroup{margin:14px 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .cgroup h3{margin:0;font-size:17px;flex:1;min-width:0;word-break:break-all}
 .cgroup .small{padding:5px 10px;font-size:13px}
+.pedit{border:none;background:none;padding:2px 6px;font-size:15px;cursor:pointer}
 .picknote{font-size:13px;color:var(--steel);margin-top:2px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .btn{border:none;border-radius:10px;padding:10px 16px;background:var(--steel);color:#fff;font-weight:500}
@@ -661,8 +662,13 @@ $('pickForm').onsubmit = async e => {
     $('pickLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有加入：連不上網路，請有訊號時再按一次。')}</span>`;
   } finally { pickSending = false; btn.disabled = false; btn.textContent = '加入'; }
 };
-async function pickAction(body, okMsg) {
-  try { applyShared(await repApi(body)); if (okMsg) toast(okMsg); }
+async function pickAction(body, okMsg, needVersion) {
+  try {
+    const j = await repApi(body);
+    applyShared(j);
+    if (needVersion && !(j.version >= needVersion)) { toast('Google 那邊的程式還沒更新，這個功能暫時不能用'); return; }
+    if (okMsg) toast(okMsg);
+  }
   catch (e) { toast(e.code ? e.message : '沒有網路，沒有改到，請等一下再試'); renderPick(); }
 }
 function renderPick() {
@@ -680,7 +686,7 @@ function renderPick() {
     picks.forEach(p => { const k = p.customer || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
     v.innerHTML = head + [...groups].map(([cust, list]) => {
       const done = list.filter(p => p.done).length;
-      return `<div class="cgroup"><h3>${esc(cust || '未填客戶')}<span class="muted" style="color:var(--muted);font-size:13px;font-weight:400">　${list.length} 項，已備 ${done}</span></h3>
+      return `<div class="cgroup"><h3>${esc(cust || '未填客戶')}<button class="pedit" data-rename="${esc(cust)}" aria-label="改客戶名稱">✏️</button><span class="muted" style="color:var(--muted);font-size:13px;font-weight:400">　${list.length} 項，已備 ${done}</span></h3>
         ${done ? `<button class="btn ghost small" data-clear="${esc(cust)}">清掉已備好的</button>` : ''}</div>` +
         list.map(p => `
         <article class="card pick ${p.done ? 'done' : ''}">
@@ -688,7 +694,7 @@ function renderPick() {
           <div class="body">
             <div class="name">${esc(p.name)}</div>
             <div class="code mono">${esc(p.code)}</div>
-            <div class="qtyline">要備 <b>${fmt(p.qty)}</b> 支/個</div>
+            <div class="qtyline">要備 <b>${fmt(p.qty)}</b> 支/個<button class="pedit" data-qty="${esc(p.id)}" aria-label="改數量">✏️</button></div>
             <div class="meta" style="margin:2px 0 0">庫存：${esc(stockText(p.code))}</div>
           </div>
           <button class="del" data-del="${esc(p.id)}" aria-label="刪除這筆">×</button>
@@ -704,6 +710,20 @@ function renderPick() {
       picks = picks.filter(x => x.id !== id); savePicks(); renderPick();
       pickAction({ action: 'pickSet', id, status: '清掉' });
       toast('已刪除', '復原', () => pickAction({ action: 'pickSet', id, status: p.done ? '已備' : '未備' }));
+    });
+    v.querySelectorAll('[data-rename]').forEach(b => b.onclick = () => {
+      const from = b.dataset.rename;
+      const to = (prompt(`把「${from || '未填客戶'}」改成什麼名字？\n（這個客戶底下的品項會一起改）`, from) || '').trim();
+      if (!to || to === from) return;
+      pickAction({ action: 'pickRename', from, to }, `已改成「${to}」`, 4);
+      store.set('inv-customers', [to, ...store.get('inv-customers', []).filter(c => c !== to && c !== from)].slice(0, 20));
+      store.set('inv-customers-hidden', [...new Set([...store.get('inv-customers-hidden', []).filter(c => c !== to), ...(from ? [from] : [])])]);
+    });
+    v.querySelectorAll('[data-qty]').forEach(b => b.onclick = () => {
+      const p = picks.find(x => x.id === b.dataset.qty); if (!p) return;
+      const n = parseFloat(prompt(`${p.name}\n要備幾支／個？`, p.qty));
+      if (isNaN(n) || n <= 0 || n === p.qty) return;
+      pickAction({ action: 'pickQty', id: p.id, qty: n }, `已改成 ${fmt(n)}`, 4);
     });
     v.querySelectorAll('[data-clear]').forEach(b => b.onclick = () => {
       const cust = b.dataset.clear;

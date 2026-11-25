@@ -29,14 +29,14 @@ const OPEN = '未處理', DONE = '已處理';           // 回報
 const TODO = '未備', READY = '已備', GONE = '清掉'; // 備料
 
 function doGet() {
-  return out_({ ok: true, hello: '庫存回報', version: 3 });
+  return out_({ ok: true, hello: '庫存回報', version: 4 });
 }
 
 function doPost(e) {
   let req;
   try { req = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad request' }); }
   // 讀庫存資料不用密碼：資料本身已經加密，手機要先拿到檔案才能請使用者輸入密碼
-  if (req.action === 'dataGet') return out_({ ok: true, version: 3, file: dataGet_() });
+  if (req.action === 'dataGet') return out_({ ok: true, version: 4, file: dataGet_() });
   if (String(req.pass) !== PASSWORD) return out_({ ok: false, error: 'badpass' });
   if (req.action === 'dataPut') {
     const f = req.file;
@@ -44,7 +44,7 @@ function doPost(e) {
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try { dataPut_(JSON.stringify(f)); } finally { lock.releaseLock(); }
     const back = dataGet_();
-    return out_({ ok: true, version: 3, saved: !!back && back.uploadedAt === f.uploadedAt, date: f.date, count: f.count, uploadedAt: f.uploadedAt });
+    return out_({ ok: true, version: 4, saved: !!back && back.uploadedAt === f.uploadedAt, date: f.date, count: f.count, uploadedAt: f.uploadedAt });
   }
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -63,6 +63,17 @@ function doPost(e) {
     } else if (a === 'pickSet') {
       // status：未備／已備／清掉
       if ([TODO, READY, GONE].indexOf(req.status) >= 0) setStatus_(ps, req.id, 7, req.status);
+    } else if (a === 'pickRename') {
+      // 改客戶名稱：還沒清掉的備料，客戶是 from 的全部改成 to
+      const rows = all_(ps), to = str_(req.to);
+      rows.forEach((r, i) => {
+        if ((r[6] === TODO || r[6] === READY) && String(r[2]) === String(req.from)) ps.getRange(i + 2, 3).setValue(to);
+      });
+    } else if (a === 'pickQty') {
+      // 改要備的數量
+      const rows = all_(ps), n = num_(req.qty);
+      const i = rows.findIndex(r => String(r[0]) === String(req.id));
+      if (i >= 0 && n !== '' && n > 0) ps.getRange(i + 2, 6).setValue(n);
     } else if (a === 'pickClearReady') {
       // 把某個客戶（或全部）已備好的清掉
       const rows = all_(ps);
@@ -71,7 +82,7 @@ function doPost(e) {
           ps.getRange(i + 2, 7, 1, 2).setValues([[GONE, new Date()]]);
       });
     }
-    return out_({ ok: true, version: 3, reports: reports_(rs), picks: picks_(ps) });
+    return out_({ ok: true, version: 4, reports: reports_(rs), picks: picks_(ps) });
   } finally {
     lock.releaseLock();
   }
