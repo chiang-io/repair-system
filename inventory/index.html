@@ -187,7 +187,8 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
           placeholder="打品名或編號，例如：斜桿 1.8">
         <button class="clear cam" id="camBtn" aria-label="拍照或從相簿選照片找品名" title="拍照或從相簿選標示卡照片找品名">📷</button>
         <button class="clear" id="clearQ" aria-label="清除">×</button>
-        <input type="file" id="camFile" accept="image/*" hidden>
+        <input type="file" id="camFile" accept="image/*" capture="environment" hidden>
+        <input type="file" id="albumFile" accept="image/*" hidden>
       </div>
       <div class="chips" id="chips"></div>
       <div class="tabs" role="tablist">
@@ -213,12 +214,20 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   </footer>
 </main>
 <div class="toast" id="toast" hidden></div>
+<dialog id="srcDlg">
+  <form method="dialog" style="padding:16px;display:grid;gap:10px">
+    <h3 style="margin:0 0 4px">用照片找品名</h3>
+    <button class="btn primary" type="button" id="srcCam" style="font-size:18px;padding:14px">📷　拍照</button>
+    <button class="btn" type="button" id="srcAlbum" style="font-size:18px;padding:14px">🖼️　從相簿選照片</button>
+    <button class="btn ghost" type="submit">取消</button>
+  </form>
+</dialog>
 <dialog id="camDlg">
   <form method="dialog" id="camForm">
     <canvas id="camCv"></canvas>
     <p class="hint">用手指在<b>品名</b>周圍畫一個框，會比較準；不畫就辨識整張。</p>
     <div class="btnrow">
-      <button class="btn ghost" type="button" id="camRetake">重拍</button>
+      <button class="btn ghost" type="button" id="camRetake">換一張</button>
       <button class="btn ghost" type="button" id="camCancel">取消</button>
       <button class="btn primary" type="submit">辨識</button>
     </div>
@@ -534,10 +543,12 @@ function drawCam() {
   const end = () => { start = null; if (camBox && (camBox.w < 30 || camBox.h < 15)) { camBox = null; drawCam(); } };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
 })();
-$('camBtn').onclick = () => { if (!scan.busy) $('camFile').click(); };
-$('camRetake').onclick = () => { $('camDlg').close(); $('camFile').click(); };
+$('camBtn').onclick = () => { if (!scan.busy) $('srcDlg').showModal(); };
+$('srcCam').onclick = () => { $('srcDlg').close(); $('camFile').click(); };
+$('srcAlbum').onclick = () => { $('srcDlg').close(); $('albumFile').click(); };
+$('camRetake').onclick = () => { $('camDlg').close(); $('srcDlg').showModal(); };
 $('camCancel').onclick = () => $('camDlg').close();
-$('camFile').onchange = async e => {
+$('camFile').onchange = $('albumFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
   try { camImg = await createImageBitmap(f, { imageOrientation: 'from-image' }); }
