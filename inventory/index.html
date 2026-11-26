@@ -350,6 +350,7 @@ let counts = store.get('inv-counts-shared', []);   // 盤點中的數字（大�
 let countsOk = true, countWh = store.get('inv-count-wh', '06'), countFilter = 'all', countShown = 80;
 // 萬用資料表（Google 程式不用改）：備貨進度、盤點的「地上／已備貨」、每個倉最後一次結束盤點的時間
 let prepRows = store.get('inv-t-prep', []), detailRows = store.get('inv-t-detail', []), finishRows = store.get('inv-t-finish', []);
+let pinRows = store.get('inv-t-pin', []);   // 📌 待點：在電腦或手機標記，等一下要去現場點的品項
 let okRows = store.get('inv-t-ok', []);   // 確認正確的紀錄（盤點正確／調整正確），結束盤點後也留著
 let whSel = store.get('inv-wh', null);      // 選了哪些倉；null = 預設
 let shown = PAGE;
@@ -468,7 +469,7 @@ function cardHtml(g, sel, tokens) {
       ${neg ? '<div class="negnote">帳上是負數，實際數量請以現場為準。</div>' : ''}
       <div class="srow">
         <span class="wt">${g.wt != null ? `單重 ${fmt(g.wt)} kg` : ''}${openPicks(g.code).length ? `<div class="picknote">備料中：${openPicks(g.code).map(p => `${esc(p.customer || '未填客戶')} ${fmt(p.qty)}`).join('、')}</div>` : ''}</span>
-        ${REPORT_API ? `<button class="add" data-add="${esc(g.code)}">＋ 加入備料</button>` : ''}
+        ${REPORT_API ? `<button class="add ${pinOf(g.code) ? 'on' : ''}" data-pin="${esc(g.code)}">${pinOf(g.code) ? '📌 待點中' : '📌 待點'}</button> <button class="add" data-add="${esc(g.code)}">＋ 加入備料</button>` : ''}
       </div>
     </div>
   </article>`;
@@ -509,6 +510,7 @@ function renderSearch() {
   const more = $('more'); if (more) more.onclick = () => { shown += PAGE; renderSearch(); };
   const sa = $('showAll'); if (sa) sa.onclick = () => { whSel = []; store.set('inv-wh', whSel); renderChips(); renderSearch(); };
   view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => openPick(b.dataset.add));
+  view.querySelectorAll('[data-pin]').forEach(b => b.onclick = () => togglePin(b.dataset.pin));
   view.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => openReport(b.dataset.rep, b.dataset.wh));
 }
 
@@ -839,10 +841,11 @@ function setTable(table, rows) {
   if (table === '盤點明細') { detailRows = rows; store.set('inv-t-detail', rows); }
   if (table === '盤點結束') { finishRows = rows; store.set('inv-t-finish', rows); }
   if (table === '確認正確') { okRows = rows; store.set('inv-t-ok', rows); }
+  if (table === '待點') { pinRows = rows; store.set('inv-t-pin', rows); }
 }
 async function loadTables() {
   try {
-    const names = ['備貨', '盤點明細', '盤點結束', '確認正確'];
+    const names = ['備貨', '盤點明細', '盤點結束', '確認正確', '待點'];
     const res = await Promise.all(names.map(t => tApi('tList', t)));
     names.forEach((t, i) => setTable(t, res[i]));
     if (tab === 'pick') renderPick(); else if (tab === 'count') renderCount(); else if (tab === 'search') renderSearch();
@@ -854,6 +857,16 @@ function lastOk(wh, code) {
     .sort((a, b) => String(a['時間']).localeCompare(String(b['時間']))).pop() || null;
 }
 const okHtml = r => r ? `✓ ${esc(r['方式'])} ${when(r['時間'])}` : '';
+const pinOf = code => pinRows.find(r => String(r['編號']) === code) || null;
+async function tDel(table, id) { setTable(table, await tApi('tDel', table, { id })); }
+async function togglePin(code) {
+  const p = pinOf(code);
+  try {
+    if (p) { await tDel('待點', p.id); toast('已從待點拿掉'); }
+    else { await tPut('待點', { 編號: code }); toast('📌 已加到待點，盤點分頁可以集中點'); }
+  } catch (e) { toast(e.code ? e.message : '沒有網路，沒有存到，請等一下再試'); }
+  if (tab === 'search') renderSearch(); else if (tab === 'count') renderCount();
+}
 async function tPut(table, row) { setTable(table, await tApi('tPut', table, { row })); }
 // 某一筆備料已經備了幾支：就是加入時填的數量（舊資料若另外記過「已備」，以那個為準）
 function preparedOf(p) {
@@ -989,7 +1002,7 @@ function renderReports() {
 }
 
 /* ---------- 盤點（大家共用，存在 Google 試算表） ---------- */
-const COUNT_FILTERS = [['all', '全部'], ['todo', '還沒盤'], ['done', '已盤'], ['diff', '有差異']];
+const COUNT_FILTERS = [['pin', '📌 待點'], ['all', '全部'], ['todo', '還沒盤'], ['done', '已盤'], ['diff', '有差異']];
 function countItems() {
   // 這個倉的所有品項，加上目前的盤點數字
   const cmap = new Map(counts.filter(c => c.wh === countWh).map(c => [c.code, c]));
@@ -999,7 +1012,7 @@ function countItems() {
 function countVisible(items) {
   const tokens = $('countQ').value.trim().split(/\s+/).map(norm).filter(Boolean);
   return items.filter(x =>
-    (countFilter === 'all' || (countFilter === 'todo' && !x.c) || (countFilter === 'done' && x.c) || (countFilter === 'diff' && x.c && x.c.actual !== x.st.qty)) &&
+    (countFilter === 'all' || (countFilter === 'pin' && pinOf(x.g.code)) || (countFilter === 'todo' && !x.c) || (countFilter === 'done' && x.c) || (countFilter === 'diff' && x.c && x.c.actual !== x.st.qty)) &&
     tokens.every(t => x.g.hay.includes(t)));
 }
 function renderCount() {
@@ -1018,14 +1031,16 @@ function renderCount() {
   const done = items.filter(x => x.c).length, diff = items.filter(x => x.c && x.c.actual !== x.st.qty).length;
   $('countProg').innerHTML = `<div class="prog"><i style="width:${items.length ? done / items.length * 100 : 0}%"></i></div>
     <div class="meta" style="margin:2px 0 6px">已盤 <b>${done}</b> / ${items.length} 項${diff ? `，<b style="color:var(--bad)">${diff} 項有差異</b>` : ''}${repState.loading ? '・更新中…' : ''}</div>`;
-  $('countFilters').innerHTML = COUNT_FILTERS.map(([k, t]) => `<button class="chip" data-cf="${k}" aria-pressed="${k === countFilter}">${t}</button>`).join('');
+  const nPin = items.filter(x => pinOf(x.g.code)).length;
+  $('countFilters').innerHTML = COUNT_FILTERS.filter(([k]) => k !== 'pin' || nPin || countFilter === 'pin')
+    .map(([k, t]) => `<button class="chip" data-cf="${k}" aria-pressed="${k === countFilter}">${t}${k === 'pin' ? `（${nPin}）` : ''}</button>`).join('');
   $('countFilters').querySelectorAll('[data-cf]').forEach(b => b.onclick = () => { countFilter = b.dataset.cf; countShown = 80; renderCount(); });
   const vis = countVisible(items);
-  $('countList').innerHTML = (vis.length ? '' : `<div class="banner">${countFilter === 'todo' && done === items.length ? '這個倉都盤完了 🎉' : '沒有符合的品項。'}</div>`) +
+  $('countList').innerHTML = (vis.length ? '' : `<div class="banner">${countFilter === 'todo' && done === items.length ? '這個倉都盤完了 🎉' : countFilter === 'pin' ? '待點的都點完了 🎉' : '沒有符合的品項。'}</div>`) +
     vis.slice(0, countShown).map(x => {
       const st = !x.c ? '' : x.c.actual === x.st.qty ? 'ok' : 'bad';
       return `<button class="crow ${st}" data-cc="${esc(x.g.code)}">
-        <div class="cn"><div class="nm">${esc(x.g.name)}</div><div class="cd mono">${esc(x.g.code)}</div></div>
+        <div class="cn"><div class="nm">${pinOf(x.g.code) ? '📌 ' : ''}${esc(x.g.name)}</div><div class="cd mono">${esc(x.g.code)}</div></div>
         <div class="cq">系統 ${fmt(x.st.qty)}<br>${x.c ? `實盤 <b>${fmt(x.c.actual)}</b>${st === 'bad' ? `<br>${diffHtml({ actual: x.c.actual, sys: x.st.qty })}` : ' ✓'}${(dd => dd && Number(dd['已備貨']) ? `<br>地上 ${fmt(Number(dd['地上']))}＋備貨 ${fmt(Number(dd['已備貨']))}` : '')(detailOf(countWh, x.g.code))}` : '還沒盤'}</div>
       </button>${(() => {
         const o = lastOk(countWh, x.g.code);
@@ -1101,6 +1116,7 @@ function saveCount(next) {
   countAction({ action: 'countSet', count: rec }, null, () => {
     counts = counts.filter(c => !(c.wh === countWh && c.code === x.g.code)).concat([{ ...rec, id: 'tmp', at: new Date().toISOString() }]);
   }).then(() => {
+    const pp = pinOf(x.g.code); if (pp) tDel('待點', pp.id).then(() => { if (tab === 'count') renderCount(); }).catch(() => {});   // 點完就從待點拿掉
     // 點到的數量和系統一樣 → 記下「盤點正確」（在盤點存好之後才記，時間才會在盤點之後）
     if (v === x.st.qty && counts.some(c => c.wh === wh0 && c.code === x.g.code && c.id !== 'tmp'))
       return tPut('確認正確', { 倉別: wh0, 編號: x.g.code, 方式: '盤點正確', 數量: v }).then(() => { if (tab === 'count') renderCount(); });
