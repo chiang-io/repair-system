@@ -126,6 +126,13 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .crow{cursor:pointer;flex-wrap:wrap}
 .crow .cok{flex-basis:100%;display:flex;justify-content:flex-end;font-size:13px;color:var(--good);margin-top:2px}
 .crow .cok button{border:1.5px solid var(--good);background:transparent;color:var(--good);border-radius:8px;padding:3px 10px;font-size:13px}
+.calcin{position:relative}
+.calcin .eq{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--steel);font-weight:700;font-size:16px;pointer-events:none}
+.calc{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.calc button{height:46px;border:1px solid var(--line);border-radius:10px;background:var(--sunk);font-size:20px;font-weight:500}
+.calc button.op{background:var(--surface);color:var(--steel);font-weight:700}
+.calc button.wide{grid-column:span 2;font-size:16px}
+.calc button.eqk{background:var(--steel);color:#fff;border-color:var(--steel)}
 .picknote{font-size:13px;color:var(--steel);margin-top:2px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .btn{border:none;border-radius:10px;padding:10px 16px;background:var(--steel);color:#fff;font-weight:500}
@@ -292,10 +299,18 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
     <div class="mono" style="color:var(--steel);font-size:14px" id="cdCode"></div>
     <div class="sys" id="cdSys"></div>
     <label class="f" for="cdQty">地上（架上、地上點到的）</label>
-    <input id="cdQty" type="number" inputmode="decimal" step="any" min="0" placeholder="點到幾個？">
+    <div class="calcin"><input id="cdQty" type="text" inputmode="decimal" autocomplete="off" placeholder="點到幾個？"><span class="eq" id="cdQtyEq"></span></div>
     <label class="f" for="cdPrep">已備貨（為出貨先備好、放旁邊的）</label>
-    <input id="cdPrep" type="number" inputmode="decimal" step="any" min="0" placeholder="沒有就空著">
+    <div class="calcin"><input id="cdPrep" type="text" inputmode="decimal" autocomplete="off" placeholder="沒有就空著"><span class="eq" id="cdPrepEq"></span></div>
     <div class="meta" id="cdPrepHint" style="margin:4px 0 0"></div>
+    <button type="button" class="btn ghost" id="calcToggle" style="margin-top:8px;padding:6px 12px">🧮 計算機</button>
+    <div class="calc" id="calc" hidden>
+<button type="button" data-k="7">7</button><button type="button" data-k="8">8</button><button type="button" data-k="9">9</button><button type="button" data-k="/" class="op">÷</button>
+      <button type="button" data-k="4">4</button><button type="button" data-k="5">5</button><button type="button" data-k="6">6</button><button type="button" data-k="*" class="op">×</button>
+      <button type="button" data-k="1">1</button><button type="button" data-k="2">2</button><button type="button" data-k="3">3</button><button type="button" data-k="-" class="op">−</button>
+      <button type="button" data-k="0">0</button><button type="button" data-k=".">.</button><button type="button" data-k="back">←</button><button type="button" data-k="+" class="op">+</button>
+      <button type="button" data-k="C" class="wide">C 清除</button><button type="button" data-k="=" class="wide eqk">＝</button>
+    </div>
     <div class="live" id="cdLive"></div>
     <div class="btnrow" style="flex-wrap:wrap">
       <button class="btn ghost" type="button" id="cdClear" style="margin-right:auto">清除這筆</button>
@@ -1083,14 +1098,51 @@ function openCount(code) {
   $('cdClear').hidden = !x.c;
   cdLive();
   if (!$('countDlg').open) $('countDlg').showModal();
+  calcField = 'cdQty';
   $('cdQty').focus(); $('cdQty').select();
 }
+// 數量格可以打算式，例如 12x50+8：只允許數字和 + − × ÷ ( )，算出結果
+function calcVal(str) {
+  const t = String(str || '').replace(/[×xX＊]/g, '*').replace(/[÷／]/g, '/').replace(/[−－]/g, '-').replace(/＋/g, '+').replace(/，|,/g, '').replace(/\s+/g, '');
+  if (!t) return NaN;
+  if (!/^[\d.+\-*/()]+$/.test(t)) return NaN;
+  try { const v = Function('"use strict";return (' + t + ')')(); return typeof v === 'number' && isFinite(v) ? Math.round(v * 1000) / 1000 : NaN; }
+  catch (e) { return NaN; }
+}
+const isExpr = str => /[+\-*/×xX÷−]/.test(String(str || '').replace(/^-/, ''));
 function cdTotal() {
-  const a = parseFloat($('cdQty').value), b = parseFloat($('cdPrep').value);
+  const a = calcVal($('cdQty').value), b = calcVal($('cdPrep').value);
   return isNaN(a) ? NaN : a + (isNaN(b) ? 0 : b);
 }
+// 計算機：按到哪一格就算到哪一格
+let calcField = 'cdQty';
+['cdQty', 'cdPrep'].forEach(id => $(id).addEventListener('focus', () => { calcField = id; }));
+// 計算機開著時不跳出手機鍵盤（會擋住計算機）；開或關會記住，下次打開視窗照舊
+function setCalc(open) {
+  $('calc').hidden = !open; $('calcToggle').textContent = open ? '🧮 收起計算機' : '🧮 計算機';
+  ['cdQty', 'cdPrep'].forEach(id => $(id).setAttribute('inputmode', open ? 'none' : 'decimal'));
+  store.set('inv-calc', open);
+  if (open && document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+$('calcToggle').onclick = () => setCalc($('calc').hidden);
+setCalc(!!store.get('inv-calc', false));
+$('calc').querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+  const f = $(calcField), k = b.dataset.k;
+  if (k === 'C') f.value = '';
+  else if (k === 'back') f.value = f.value.slice(0, -1);
+  else if (k === '=') { const v = calcVal(f.value); if (!isNaN(v)) f.value = v; }
+  else f.value += ({ '*': '×', '/': '÷', '-': '−' })[k] || k;
+  cdLive();
+});
+function showEq() {
+  [['cdQty', 'cdQtyEq'], ['cdPrep', 'cdPrepEq']].forEach(([i, e]) => {
+    const raw = $(i).value, v = calcVal(raw);
+    $(e).textContent = isExpr(raw) && !isNaN(v) ? `＝ ${fmt(v)}` : '';
+  });
+}
 function cdLive() {
-  const v = cdTotal(), b = parseFloat($('cdPrep').value);
+  showEq();
+  const v = cdTotal(), b = calcVal($('cdPrep').value);
   if (!isNaN(v) && !isNaN(b) && b > 0 && cdTarget) {
     $('cdLive').innerHTML = `合計 <b>${fmt(v)}</b>　` + (v === cdTarget.st.qty ? '<span style="color:var(--good)">✓ 和系統一樣</span>' : `和系統相比：${diffHtml({ actual: v, sys: cdTarget.st.qty })}`);
     return;
@@ -1113,7 +1165,8 @@ async function countAction(body, okMsg, optimistic) {
   }
 }
 function saveCount(next) {
-  const v = cdTotal(), x = cdTarget, floor = parseFloat($('cdQty').value), prep = parseFloat($('cdPrep').value) || 0;
+  const v = cdTotal(), x = cdTarget, floor = calcVal($('cdQty').value), prep = calcVal($('cdPrep').value) || 0;
+  if ($('cdPrep').value.trim() && isNaN(calcVal($('cdPrep').value))) { $('cdPrep').focus(); return; }
   if (isNaN(v) || floor < 0 || prep < 0 || !x) { $('cdQty').focus(); return; }
   const d = detailOf(countWh, x.g.code);
   tPut('盤點明細', { ...(d ? { id: d.id } : {}), 倉別: countWh, 編號: x.g.code, 地上: floor, 已備貨: prep }).catch(() => {});
