@@ -123,8 +123,9 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .pprog i{display:block;height:100%;background:var(--good)}
 .cntnote{font-size:13px;color:var(--steel);margin:-2px 0 4px 36px}
 .oknote{font-size:13px;color:var(--good);margin:-2px 0 4px 36px}
-.cfmrow{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:-2px 0 8px;font-size:13px;color:var(--muted)}
-.cfmrow .btn{padding:6px 12px;font-size:14px;background:var(--good)}
+.crow{cursor:pointer;flex-wrap:wrap}
+.crow .cok{flex-basis:100%;display:flex;justify-content:flex-end;font-size:13px;color:var(--good);margin-top:2px}
+.crow .cok button{border:1.5px solid var(--good);background:transparent;color:var(--good);border-radius:8px;padding:3px 10px;font-size:13px}
 .picknote{font-size:13px;color:var(--steel);margin-top:2px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .btn{border:none;border-radius:10px;padding:10px 16px;background:var(--steel);color:#fff;font-weight:500}
@@ -1039,19 +1040,24 @@ function renderCount() {
   $('countList').innerHTML = (vis.length ? '' : `<div class="banner">${countFilter === 'todo' && done === items.length ? '這個倉都盤完了 🎉' : countFilter === 'pin' ? '待點的都點完了 🎉' : '沒有符合的品項。'}</div>`) +
     vis.slice(0, countShown).map(x => {
       const st = !x.c ? '' : x.c.actual === x.st.qty ? 'ok' : 'bad';
-      return `<button class="crow ${st}" data-cc="${esc(x.g.code)}">
+      return `<div class="crow ${st}" data-cc="${esc(x.g.code)}" role="button" tabindex="0">
         <div class="cn"><div class="nm">${pinOf(x.g.code) ? '📌 ' : ''}${esc(x.g.name)}</div><div class="cd mono">${esc(x.g.code)}</div></div>
         <div class="cq">系統 ${fmt(x.st.qty)}<br>${x.c ? `實盤 <b>${fmt(x.c.actual)}</b>${st === 'bad' ? `<br>${diffHtml({ actual: x.c.actual, sys: x.st.qty })}` : ' ✓'}${(dd => dd && Number(dd['已備貨']) ? `<br>地上 ${fmt(Number(dd['地上']))}＋備貨 ${fmt(Number(dd['已備貨']))}` : '')(detailOf(countWh, x.g.code))}` : '還沒盤'}</div>
-      </button>${(() => {
-        const o = lastOk(countWh, x.g.code);
-        // 盤點的數字已經和系統一樣，但這次盤點之後還沒記錄確認 → 顯示按鈕（通常是 ERP 調整好、上傳新庫存之後）
-        if (x.c && x.c.actual === x.st.qty && !(o && String(o['時間']) >= String(x.c.at)))
-          return `<div class="cfmrow"><button class="btn" data-ok="${esc(x.g.code)}">✓ 記錄調整正確</button></div>`;
-        return o ? `<div class="cfmrow" style="color:var(--good)">${okHtml(o)}</div>` : '';
-      })()}`;
+        ${(() => {
+          const o = lastOk(countWh, x.g.code);
+          // 盤點的數字已經和系統一樣，但這次盤點之後還沒記錄確認 → 卡片右下角小按鈕（通常是 ERP 調整好、上傳新庫存之後）
+          if (x.c && x.c.actual === x.st.qty && !(o && String(o['時間']) >= String(x.c.at)))
+            return `<div class="cok"><button data-ok="${esc(x.g.code)}">記錄調整正確</button></div>`;
+          return o ? `<div class="cok">${okHtml(o)}</div>` : '';
+        })()}
+      </div>`;
     }).join('') + (vis.length > countShown ? `<button class="more" id="countMore">再顯示 ${Math.min(80, vis.length - countShown)} 項（共 ${vis.length}）</button>` : '');
-  $('countList').querySelectorAll('[data-cc]').forEach(b => b.onclick = () => openCount(b.dataset.cc));
-  $('countList').querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => {
+  $('countList').querySelectorAll('[data-cc]').forEach(b => {
+    b.onclick = () => openCount(b.dataset.cc);
+    b.onkeydown = e => { if (e.key === 'Enter') openCount(b.dataset.cc); };
+  });
+  $('countList').querySelectorAll('[data-ok]').forEach(b => b.onclick = async ev => {
+    ev.stopPropagation();   // 不要同時打開輸入數量的視窗
     const x = countItems().find(i => i.g.code === b.dataset.ok); if (!x) return;
     b.disabled = true;
     try { await tPut('確認正確', { 倉別: countWh, 編號: x.g.code, 方式: '調整正確', 數量: x.st.qty }); toast('已記錄調整正確 ✓'); }
