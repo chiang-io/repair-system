@@ -991,7 +991,9 @@ function renderCount() {
   if (!index || index.data !== data) buildIndex();
   const whs = whList();
   if (!whs.includes(countWh)) countWh = whs.includes('06') ? '06' : whs[0];
-  $('countWhs').innerHTML = whs.map(w => `<button class="chip" data-cw="${esc(w)}" aria-pressed="${w === countWh}">${esc(w)} ${esc(whLabel(w))}</button>`).join('');
+  // 每個倉正在盤的項數，例如「01 半成品倉（5）」
+  const nByWh = {}; counts.forEach(c => { nByWh[c.wh] = (nByWh[c.wh] || 0) + 1; });
+  $('countWhs').innerHTML = whs.map(w => `<button class="chip" data-cw="${esc(w)}" aria-pressed="${w === countWh}">${esc(w)} ${esc(whLabel(w))}${nByWh[w] ? `<b style="margin-left:4px">（${nByWh[w]}）</b>` : ''}</button>`).join('');
   $('countWhs').querySelectorAll('[data-cw]').forEach(b => b.onclick = () => { countWh = b.dataset.cw; store.set('inv-count-wh', countWh); countShown = 80; renderCount(); });
   if (!countsOk) {
     $('countProg').innerHTML = `<div class="banner warn"><b>Google 那邊的程式還沒更新。</b>請照說明在 Apps Script 貼上新程式並重新部署，盤點才能用。</div>`;
