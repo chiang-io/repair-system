@@ -339,8 +339,6 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
     <label class="f" for="repQty">現場實際數量</label>
     <input id="repQty" type="number" inputmode="numeric" step="any" required placeholder="點到幾個？">
     <div class="live" id="repLive"></div>
-    <label class="f">可能原因</label>
-    <div class="chips" id="repReason"></div>
     <label class="f" for="repNote">備註（選填）</label>
     <input id="repNote" type="text" placeholder="例如：A 區架上只有 3 包">
     <div class="btnrow">
@@ -840,7 +838,6 @@ function renderPick() {
 }
 
 /* ---------- 數量回報（大家共用，存在 Google 試算表） ---------- */
-const REASONS = ['備貨拿走', '帳錯了'];
 function saveReports() {
   store.set('inv-reports-shared', reports);
   $('repCount').textContent = reports.length ? `(${reports.length})` : '';
@@ -961,7 +958,7 @@ function repNoteHtml(code, wh) {
   if (c && c.kind === 'fixed') return `<div class="repnote ok">✅ 有人回報過實際 ${fmt(r.actual)}，新報表已經一樣了</div>`;
   return `<div class="repnote">⚠ 有人回報：實際 ${fmt(r.actual)}（${diffHtml(r)}，${when(r.at)}）</div>`;
 }
-let repTarget = null, repReason = REASONS[0], repSending = false;
+let repTarget = null, repSending = false;
 function openReport(code, wh) {
   const g = index.groups.find(x => x.code === code); if (!g) return;
   const st = g.stock.find(s => s.wh === wh); if (!st) return;
@@ -970,13 +967,8 @@ function openReport(code, wh) {
   $('repCode').textContent = `${code}　${wh} ${whLabel(wh)}`;
   $('repSys').innerHTML = `系統數量：<b>${fmt(st.qty)}</b>　<span style="color:var(--muted);font-size:13px">（${esc(whDate(wh))} 報表）</span>`;
   $('repQty').value = ''; $('repNote').value = ''; $('repLive').textContent = '';
-  repReason = REASONS[0]; renderReasons();
   $('repDlg').showModal();
   $('repQty').focus();   // 在點擊當下就聚焦，iPhone 才會直接跳出鍵盤
-}
-function renderReasons() {
-  $('repReason').innerHTML = REASONS.map(r => `<button type="button" class="chip" aria-pressed="${r === repReason}" data-r="${r}">${r}</button>`).join('');
-  $('repReason').querySelectorAll('.chip').forEach(b => b.onclick = () => { repReason = b.dataset.r; renderReasons(); });
 }
 $('repQty').oninput = () => {
   const v = parseFloat($('repQty').value);
@@ -991,7 +983,7 @@ $('repForm').onsubmit = async e => {
   repSending = true;
   const btn = $('repForm').querySelector('[type=submit]'); btn.disabled = true; btn.textContent = '送出中…';
   try {
-    applyShared(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: repReason, note: $('repNote').value.trim(), dataDate: whDate(repTarget.wh) } }));
+    applyShared(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: '', note: $('repNote').value.trim(), dataDate: whDate(repTarget.wh) } }));
     $('repDlg').close(); toast('已送出，大家都看得到了');
   } catch (err) {
     $('repLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有送出：連不上網路，請有訊號時再按一次。')}</span>`;
@@ -1028,7 +1020,7 @@ function renderReports() {
         <div class="sub">${esc(r.wh)} ${esc(whLabel(r.wh))}</div>
         <div class="line">系統 ${fmt(r.sys)} → 實際 <b>${fmt(r.actual)}</b>（${diffHtml(r)}）</div>
         ${(c => c ? `<div class="check ${c.kind}">${esc(c.text)}</div>` : '')(repCheck(r))}
-        <div class="sub">原因：${esc(r.reason)}${r.note ? `　備註：${esc(r.note)}` : ''}</div>
+        ${r.reason || r.note ? `<div class="sub">${r.reason ? `原因：${esc(r.reason)}　` : ''}${r.note ? `備註：${esc(r.note)}` : ''}</div>` : ''}
         <div class="sub">${when(r.at)} 回報</div>
       </div>
       <button class="del" data-rdel="${esc(r.id)}" aria-label="處理完，劃掉">✕</button>
@@ -1036,7 +1028,7 @@ function renderReports() {
     <div class="actions"><button class="btn primary" id="copyRep">複製全部（貼到 LINE）</button></div>`;
     v.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => markDone(b.dataset.rdel));
     $('copyRep').onclick = async () => {
-      const lines = list.map((r, i) => `${i + 1}. ${r.name}\n   ${r.code}　${r.wh}${whLabel(r.wh)}\n   系統 ${fmt(r.sys)} → 實際 ${fmt(r.actual)}（${r.actual - r.sys < 0 ? '少' : '多'} ${fmt(Math.abs(r.actual - r.sys))}）\n   原因：${r.reason}${r.note ? `，${r.note}` : ''}（${when(r.at)}）`);
+      const lines = list.map((r, i) => `${i + 1}. ${r.name}\n   ${r.code}　${r.wh}${whLabel(r.wh)}\n   系統 ${fmt(r.sys)} → 實際 ${fmt(r.actual)}（${r.actual - r.sys < 0 ? '少' : '多'} ${fmt(Math.abs(r.actual - r.sys))}）${r.reason ? `\n   原因：${r.reason}` : ''}${r.note ? `\n   備註：${r.note}` : ''}\n   （${when(r.at)}）`);
       const text = '庫存數量回報\n' + lines.join('\n');
       try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
       catch (e) { prompt('請長按複製：', text); }
