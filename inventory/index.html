@@ -230,7 +230,6 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
       <div id="countList"></div>
       <div class="actions">
         <button class="btn ghost" id="countReload">重新整理</button>
-        <button class="btn ghost" id="countFinish" style="color:var(--bad);border-color:var(--bad)">結束這次盤點</button>
       </div>
     </div>
   </section>
@@ -1019,12 +1018,7 @@ function renderCount() {
 }
 $('countQ').oninput = () => { countShown = 80; renderCount(); };
 $('countReload').onclick = () => loadReports(true);
-$('countFinish').onclick = () => {
-  const n = counts.filter(c => c.wh === countWh).length;
-  if (!confirm(`結束 ${countWh} ${whLabel(countWh)}這次的盤點？\n\n已盤的 ${n} 項會存在 Google 試算表裡，App 上會清空，下次從頭開始。`)) return;
-  countAction({ action: 'countFinish', wh: countWh }, '已結束這次盤點', () => { counts = counts.filter(c => c.wh !== countWh); });
-  tPut('盤點結束', { 倉別: countWh }).catch(() => {});
-};
+// 「結束這次盤點」放在電腦的上傳頁，手機上不顯示，避免誤按
 let cdTarget = null;
 function openCount(code) {
   const x = countItems().find(i => i.g.code === code); if (!x) return;

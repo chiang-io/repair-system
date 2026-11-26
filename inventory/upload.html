@@ -103,6 +103,13 @@ footer{color:var(--muted);font-size:13px;padding:10px 0 40px}
     <div class="msg" id="pwMsg"></div>
   </section>
 
+  <section class="step" id="finBox">
+    <h2>結束盤點</h2>
+    <p class="muted">盤點完、ERP 也調整好之後，在這裡結束。結束後紀錄會留在 Google 試算表的「盤點」工作表，手機上的盤點清空，下次從頭開始。（手機上沒有這個按鈕，避免誤按。）</p>
+    <div id="finList"><p class="muted">讀取中…</p></div>
+    <div class="msg" id="finMsg"></div>
+  </section>
+
   <footer>
     手機查詢網址：<a id="phoneUrl" href="./">./</a>　｜　數量來自 ERP 報表，不是即時庫存。
   </footer>
@@ -133,6 +140,45 @@ function describe(f) {
   return `${f.date}（${f.count} 筆，${when(f.uploadedAt)} 上傳）`;
 }
 (async () => { $('siteNow').textContent = '網站上的資料：' + describe(await siteInfo()); })();
+
+/* 結束盤點（只在電腦上） */
+async function sharedApi(body) {
+  const pw = $('pw1').value || store.get('inv-upload-pass', '');
+  if (!pw) throw new Error('請先在上面輸入公司密碼');
+  const r = await fetch(REPORT_API, { method: 'POST', body: JSON.stringify({ ...body, pass: pw }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error === 'badpass' ? '密碼和 Google 試算表裡的不一樣' : j.error === 'nopass' ? 'Google 試算表「設定」工作表的 B1 還沒填公司密碼' : (j.error || '失敗了'));
+  return j;
+}
+const WH_NAME = { '01': '半成品倉', '02': '新品倉', '03': '舊品倉', '04': '支撐組件倉', '06': '五金倉' };
+async function loadFin() {
+  if (!REPORT_API) { $('finBox').hidden = true; return; }
+  try {
+    const j = await sharedApi({ action: 'list' });
+    const by = {};
+    (j.counts || []).forEach(c => { const w = String(c.wh).padStart(2, '0'); (by[w] = by[w] || { n: 0, diff: 0 }).n++; });
+    const ws = Object.keys(by).sort();
+    $('finList').innerHTML = ws.length
+      ? `<table><thead><tr><th>倉別</th><th class="num">已盤項數</th><th></th></tr></thead><tbody>` +
+        ws.map(w => `<tr><td>${esc(w)} ${esc(WH_NAME[w] || '')}</td><td class="num">${by[w].n}</td><td style="text-align:right"><button class="btn ghost" data-fin="${esc(w)}" style="color:var(--bad);border-color:var(--bad)">結束這次盤點</button></td></tr>`).join('') +
+        `</tbody></table>`
+      : '<p class="muted">目前沒有正在盤點的倉。</p>';
+    document.querySelectorAll('[data-fin]').forEach(b => b.onclick = async () => {
+      const w = b.dataset.fin;
+      if (!confirm(`結束 ${w} ${WH_NAME[w] || ''}這次的盤點？\n\n已盤的 ${by[w].n} 項會存在 Google 試算表裡，手機上會清空，下次從頭開始。`)) return;
+      b.disabled = true;
+      try {
+        await sharedApi({ action: 'countFinish', wh: w });
+        await sharedApi({ action: 'tPut', table: '盤點結束', row: { 倉別: w } }).catch(() => {});
+        $('finMsg').textContent = `✓ 已結束 ${w} ${WH_NAME[w] || ''}的盤點`; $('finMsg').className = 'msg good';
+      } catch (e) { $('finMsg').textContent = '沒有結束：' + e.message; $('finMsg').className = 'msg bad'; }
+      loadFin();
+    });
+  } catch (e) {
+    $('finList').innerHTML = `<p class="muted">${esc(e.message === 'Failed to fetch' ? '連不上 Google，等一下再重新整理這頁。' : e.message)}</p>`;
+  }
+}
+loadFin();
 
 /* 1. 選檔 */
 $('pick').onclick = () => $('file').click();
