@@ -64,6 +64,9 @@ header .date b{display:block;font-size:14px;opacity:1}
 .chip{border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px;font-size:14px;line-height:1.3}
 .chip[aria-pressed="true"]{background:var(--steel);border-color:var(--steel);color:#fff}
 .chip.clear{border-color:var(--bad);color:var(--bad);background:transparent;font-weight:500}
+.whall{display:flex;gap:8px;margin-top:8px}
+.whall button:disabled{opacity:.4}
+.whall button{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:3px 12px;font-size:13px}
 .allnote{align-self:center;color:var(--muted);font-size:13px;padding:0 4px}
 .tabs{display:flex;gap:6px;margin-top:10px}
 .tab{flex:1;border:none;border-radius:10px;padding:9px 4px;background:var(--sunk);font-weight:500;font-size:15px;white-space:nowrap;min-width:0}
@@ -108,7 +111,7 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .cgroup h3{margin:0;font-size:17px;flex:1;min-width:0;word-break:break-all}
 .cgroup .small{padding:5px 10px;font-size:13px}
 .pedit{border:none;background:none;padding:2px 6px;font-size:15px;cursor:pointer}
-#mainView.counting .sticky .search,#mainView.counting #chips{display:none}
+#mainView.counting .sticky .search,#mainView.counting #chips,#mainView.counting #whAll{display:none}
 #mainView.counting .tabs{margin-top:0}
 .crow{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:9px 12px;margin:6px 0}
 .crow.ok{border-left-color:var(--good)} .crow.bad{border-left-color:var(--bad)}
@@ -221,6 +224,7 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
         <input type="file" id="albumFile" accept="image/*" hidden>
       </div>
       <div class="chips" id="chips"></div>
+      <div class="whall" id="whAll"><button type="button" id="whAllOn">全選</button><button type="button" id="whAllOff">全部取消</button></div>
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" id="tabSearch" aria-selected="true">查詢</button>
         <button class="tab" role="tab" id="tabPick" aria-selected="false">備料清單 <span id="pickCount"></span></button>
@@ -400,11 +404,8 @@ function pickedWh() {
   const all = whList();
   return (whSel || MAIN_WH).filter(w => all.includes(w));
 }
-// 實際要查的倉：沒選任何倉 = 全部倉
-function selectedWh() {
-  const p = pickedWh();
-  return p.length ? p : whList();
-}
+// 實際要查的倉 = 亮起來的倉（一個都沒選就是沒選，不會偷偷變成全部）
+function selectedWh() { return pickedWh(); }
 function whLabel(w) { return (data.wh && data.wh[w]) || ''; }
 
 // 某個倉的資料日期（單倉更新後，各倉日期可能不同）
@@ -422,24 +423,27 @@ function renderHeader() {
   $('staleBox').innerHTML = (mixed ? `<div class="meta" style="margin:8px 2px 0">各倉資料日期：${wds.map(w => `${esc(w)} ${esc(data.whDates[w].slice(5).replace('-', '/'))}`).join('・')}</div>` : '') +
     (d != null && d >= 7 ? `<div class="banner warn"><b>${mixed ? '有倉的' : ''}資料是 ${d} 天前的。</b>數量可能已經變了，有空請匯入新的報表。</div>` : '');
 }
+function setWh(list) { whSel = list; store.set('inv-wh', whSel); shown = PAGE; renderChips(); renderSearch(); }
 function renderChips() {
-  const all = whList(), picked = pickedWh();
+  const all = whList();
+  // 舊版「沒選＝全部倉」：第一次打開新版時，沒選任何倉的手機改成全選，畫面不會突然空掉
+  if (!store.get('inv-wh-v2', false)) {
+    if (Array.isArray(whSel) && !whSel.length) { whSel = all.slice(); store.set('inv-wh', whSel); }
+    store.set('inv-wh-v2', true);
+  }
+  const picked = pickedWh();
   $('chips').innerHTML = all.map(w =>
-    `<button class="chip" data-wh="${esc(w)}" aria-pressed="${picked.includes(w)}">${esc(w)} ${esc(whLabel(w))}</button>`).join('')
-    + (picked.length
-      ? `<button class="chip clear" data-wh="-">✕ 清除</button>`
-      : `<span class="allnote">沒選＝查全部倉</span>`);
+    `<button class="chip" data-wh="${esc(w)}" aria-pressed="${picked.includes(w)}">${esc(w)} ${esc(whLabel(w))}</button>`).join('');
   $('chips').querySelectorAll('.chip').forEach(b => b.onclick = () => {
-    const w = b.dataset.wh;
-    if (w === '-') whSel = [];
-    else {
-      const s = new Set(picked);
-      s.has(w) ? s.delete(w) : s.add(w);
-      whSel = [...s];
-    }
-    store.set('inv-wh', whSel); shown = PAGE; renderChips(); renderSearch();
+    const s = new Set(picked), w = b.dataset.wh;
+    s.has(w) ? s.delete(w) : s.add(w);
+    setWh([...s]);
   });
+  $('whAllOn').disabled = picked.length === all.length;
+  $('whAllOff').disabled = !picked.length;
 }
+$('whAllOn').onclick = () => setWh(whList());
+$('whAllOff').onclick = () => setWh([]);
 
 let index = null;
 function buildIndex() {
@@ -498,9 +502,10 @@ function renderSearch() {
   const sel = selectedWh();
   const view = $('searchView');
   if (scan.busy || scan.msg) { view.innerHTML = `<div class="banner">📷 ${esc(scan.msg || '處理中…')}</div>`; return; }
+  if (!sel.length) { view.innerHTML = `<div class="banner">請先選要查的倉（點上面的倉別，或按「全選」）。</div>`; return; }
   if (!tokens.length) {
     const n = index.groups.filter(g => g.stock.some(s => sel.includes(s.wh))).length;
-    view.innerHTML = `<p class="meta">${pickedWh().length ? '目前選的倉' : '全部倉'}共有 ${n} 種品項。在上面打品名或編號開始找；可以打好幾段，用空白分開，例如「斜桿 1.8」「SB-BD」「螺絲 M6」。</p>`;
+    view.innerHTML = `<p class="meta">${sel.length === whList().length ? '全部倉' : '目前選的倉'}共有 ${n} 種品項。在上面打品名或編號開始找；可以打好幾段，用空白分開，例如「斜桿 1.8」「SB-BD」「螺絲 M6」。</p>`;
     return;
   }
   const fromCam = camText !== null && camText === $('q').value;
@@ -524,7 +529,7 @@ function renderSearch() {
   else if (outside && inSel.length) html += `<button class="more" id="showAll">其他倉還有 ${outside} 種，看全部倉</button>`;
   view.innerHTML = html;
   const more = $('more'); if (more) more.onclick = () => { shown += PAGE; renderSearch(); };
-  const sa = $('showAll'); if (sa) sa.onclick = () => { whSel = []; store.set('inv-wh', whSel); renderChips(); renderSearch(); };
+  const sa = $('showAll'); if (sa) sa.onclick = () => setWh(whList());
   view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => openPick(b.dataset.add));
   view.querySelectorAll('[data-pin]').forEach(b => b.onclick = () => togglePin(b.dataset.pin));
   view.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => openReport(b.dataset.rep, b.dataset.wh));
