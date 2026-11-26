@@ -235,7 +235,7 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" id="tabSearch" aria-selected="true">查詢</button>
         <button class="tab" role="tab" id="tabPick" aria-selected="false">備料清單 <span id="pickCount"></span></button>
-        <button class="tab" role="tab" id="tabRep" aria-selected="false">回報 <span id="repCount"></span></button>
+        <button class="tab" role="tab" id="tabRep" aria-selected="false">抽點差異 <span id="repCount"></span></button>
         <button class="tab" role="tab" id="tabCount" aria-selected="false">盤點</button>
       </div>
     </div>
@@ -497,7 +497,7 @@ function cardHtml(g, sel, tokens) {
       <div class="srow">
         <div class="wh ${MAIN_WH.includes(s.wh) ? 'main' : ''}"><span class="no mono">${esc(s.wh)}</span>${esc(whLabel(s.wh))}</div>
         <div class="qty ${s.qty < 0 ? 'neg' : s.qty === 0 ? 'zero' : ''}">${fmt(s.qty)}<small>支/個</small></div>
-        ${REPORT_API ? `<button class="rep pin ${pinOf(g.code, s.wh) ? 'on' : ''}" data-pin="${esc(g.code)}" data-wh="${esc(s.wh)}" aria-label="${pinOf(g.code, s.wh) ? '取消待點' : '加到待點'}">📌</button><button class="rep" data-rep="${esc(g.code)}" data-wh="${esc(s.wh)}">回報</button>` : ''}
+        ${REPORT_API ? `<button class="rep pin ${pinOf(g.code, s.wh) ? 'on' : ''}" data-pin="${esc(g.code)}" data-wh="${esc(s.wh)}" aria-label="${pinOf(g.code, s.wh) ? '取消待點' : '加到待點'}">📌</button><button class="rep" data-rep="${esc(g.code)}" data-wh="${esc(s.wh)}">抽點</button>` : ''}
       </div>${repNoteHtml(g.code, s.wh)}${(c => c ? `<div class="cntnote">盤點：${fmt(c.actual)}（${when(c.at)}）${c.actual === s.qty ? ' ✓' : ''}</div>` : '')(counts.find(c => c.wh === s.wh && c.code === g.code))}${(o => o ? `<div class="oknote">${okHtml(o)}</div>` : '')(lastOk(s.wh, g.code))}`).join('')}
       ${neg ? '<div class="negnote">帳上是負數，實際數量請以現場為準。</div>' : ''}
       <div class="srow">
@@ -931,7 +931,7 @@ async function loadReports(force) {
   if (!force && Date.now() - repState.at < 60000) return;   // 一分鐘內不重抓
   repState.loading = true; if (tab === 'rep') renderReports(); else if (tab === 'pick') renderPick(); else if (tab === 'count') renderCount();
   try { applyShared(await repApi({ action: 'list' })); loadTables(); }
-  catch (e) { repState.error = e.code ? e.message : '連不上網路，顯示上次的回報'; }
+  catch (e) { repState.error = e.code ? e.message : '連不上網路，顯示上次的資料'; }
   finally { repState.loading = false; if (tab === 'rep') renderReports(); else if (tab === 'pick') renderPick(); else if (tab === 'count') renderCount(); }
 }
 function diffHtml(r) {
@@ -955,8 +955,8 @@ function repNoteHtml(code, wh) {
   const r = reports.filter(x => x.code === code && x.wh === wh).pop();
   if (!r) return '';
   const c = repCheck(r);
-  if (c && c.kind === 'fixed') return `<div class="repnote ok">✅ 有人回報過實際 ${fmt(r.actual)}，新報表已經一樣了</div>`;
-  return `<div class="repnote">⚠ 有人回報：實際 ${fmt(r.actual)}（${diffHtml(r)}，${when(r.at)}）</div>`;
+  if (c && c.kind === 'fixed') return `<div class="repnote ok">✅ 抽點過實際 ${fmt(r.actual)}，新報表已經一樣了</div>`;
+  return `<div class="repnote">⚠ 抽點差異：實際 ${fmt(r.actual)}（${diffHtml(r)}，${when(r.at)}）</div>`;
 }
 let repTarget = null, repSending = false;
 function openReport(code, wh) {
@@ -983,8 +983,15 @@ $('repForm').onsubmit = async e => {
   repSending = true;
   const btn = $('repForm').querySelector('[type=submit]'); btn.disabled = true; btn.textContent = '送出中…';
   try {
-    applyShared(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: '', note: $('repNote').value.trim(), dataDate: whDate(repTarget.wh) } }));
-    $('repDlg').close(); toast('已送出，大家都看得到了');
+    if (v === repTarget.sys) {
+      // 數量正確：不進差異清單，記一筆「抽點正確」
+      await tPut('確認正確', { 倉別: repTarget.wh, 編號: repTarget.code, 方式: '抽點正確', 數量: v });
+      $('repDlg').close(); toast('✓ 數量正確，已記錄抽點正確');
+      if (tab === 'search') renderSearch();
+    } else {
+      applyShared(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: '', note: $('repNote').value.trim(), dataDate: whDate(repTarget.wh) } }));
+      $('repDlg').close(); toast('數量不一樣，已記到「抽點差異」，大家都看得到');
+    }
   } catch (err) {
     $('repLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有送出：連不上網路，請有訊號時再按一次。')}</span>`;
   } finally { repSending = false; btn.disabled = false; btn.textContent = '送出'; }
@@ -1006,10 +1013,10 @@ function renderReports() {
   const v = $('repView');
   const status = repState.loading ? '更新中…' : repState.error ? `<span style="color:var(--bad)">${esc(repState.error)}</span>` : repState.at ? `${when(new Date(repState.at).toISOString())} 更新` : '';
   const head = `<div class="meta" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <span style="flex:1">大家的回報，處理完按 ✕ 劃掉。${status ? '・' + status : ''}</span>
+      <span style="flex:1">抽點時數量和系統不一樣的品項，處理完按 ✕ 劃掉。${status ? '・' + status : ''}</span>
       <button class="btn ghost" id="repReload" style="padding:6px 12px">重新整理</button></div>`;
   if (!reports.length) {
-    v.innerHTML = head + `<div class="banner">${repState.loading && !repState.at ? '讀取中…' : '目前沒有回報。查詢時發現數量不對，在那個倉的數量旁邊按「回報」。'}</div>`;
+    v.innerHTML = head + `<div class="banner">${repState.loading && !repState.at ? '讀取中…' : '目前沒有抽點差異。查詢時想順手點數量，在那個倉的數量旁邊按「抽點」。'}</div>`;
   } else {
     const list = reports.slice().reverse();
     v.innerHTML = head + list.map(r => `
@@ -1021,7 +1028,7 @@ function renderReports() {
         <div class="line">系統 ${fmt(r.sys)} → 實際 <b>${fmt(r.actual)}</b>（${diffHtml(r)}）</div>
         ${(c => c ? `<div class="check ${c.kind}">${esc(c.text)}</div>` : '')(repCheck(r))}
         ${r.reason || r.note ? `<div class="sub">${r.reason ? `原因：${esc(r.reason)}　` : ''}${r.note ? `備註：${esc(r.note)}` : ''}</div>` : ''}
-        <div class="sub">${when(r.at)} 回報</div>
+        <div class="sub">${when(r.at)} 抽點</div>
       </div>
       <button class="del" data-rdel="${esc(r.id)}" aria-label="處理完，劃掉">✕</button>
     </article>`).join('') + `
@@ -1029,7 +1036,7 @@ function renderReports() {
     v.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => markDone(b.dataset.rdel));
     $('copyRep').onclick = async () => {
       const lines = list.map((r, i) => `${i + 1}. ${r.name}\n   ${r.code}　${r.wh}${whLabel(r.wh)}\n   系統 ${fmt(r.sys)} → 實際 ${fmt(r.actual)}（${r.actual - r.sys < 0 ? '少' : '多'} ${fmt(Math.abs(r.actual - r.sys))}）${r.reason ? `\n   原因：${r.reason}` : ''}${r.note ? `\n   備註：${r.note}` : ''}\n   （${when(r.at)}）`);
-      const text = '庫存數量回報\n' + lines.join('\n');
+      const text = '抽點差異\n' + lines.join('\n');
       try { await navigator.clipboard.writeText(text); toast('已複製，可以貼到 LINE'); }
       catch (e) { prompt('請長按複製：', text); }
     };
