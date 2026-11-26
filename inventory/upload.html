@@ -205,7 +205,7 @@ async function load(f) {
       <p class="muted">「結存合計」可以和報表最後的「合計」比對，一樣就代表讀對了。${r.skipped ? `有 ${r.skipped} 行看不懂，已略過。` : ''}</p>
       ${by['?'] ? '<p class="msg bad"><b>有資料認不出是哪個倉（倉別「?」）。</b>請不要上傳，把這個檔案傳給 Claude 看看。</p>' : ''}
       ${r.ignored.length ? `<p class="muted">已略過不需要的倉：${r.ignored.map(x => `${esc(x.wh)} ${esc(x.name)}（${x.n} 筆）`).join('、')}。只保留 ${KEEP_WH.join('、')}。</p>` : ''}
-      ${KEEP_WH.some(w => !by[w]) ? `<p class="msg bad">⚠ 這份缺少 <b>${KEEP_WH.filter(w => !by[w]).join('、')}</b> 倉。上傳後，網站上這些倉的資料會<b>不見</b>。請從 ERP 匯出包含 ${KEEP_WH.join('、')} 的報表。</p>` : ''}`;
+      ${KEEP_WH.some(w => !by[w]) ? `<p class="msg" style="color:var(--steel)">這份只有 <b>${Object.keys(by).sort().join('、')}</b> 倉：上傳後<b>只更新這幾個倉</b>，${KEEP_WH.filter(w => !by[w]).join('、')} 保留網站上原本的資料。</p>` : ''}`;
     $('upBox').hidden = false; showPwStep();
     checkPw();
     if (!$('pw1').value) $('pw1').focus();
@@ -245,27 +245,34 @@ async function prepare() {
   const pw = $('pw1').value;
   if (saved && pw !== saved && !confirm('密碼和上次不一樣。\n\n換密碼後，每支手機都要重新輸入新密碼。確定要換嗎？')) return null;
   $('makeMsg').textContent = '檢查中…'; $('makeMsg').className = 'msg';
-  // 和網站上現在的資料比：新報表少了哪些倉？
+  // 只更新報表裡有的倉：其他倉沿用網站上現在的資料（各倉記自己的日期）
+  const { skipped, ignored, ...obj } = parsed;
+  const newWh = new Set(obj.rows.map(x => x[0]));
+  obj.whDates = {}; newWh.forEach(w => { obj.whDates[w] = obj.date; });
+  obj.wh = { ...obj.wh };
   try {
     const site = await siteInfo();
     if (site && !site.error) {
-      const old = await decryptData(site, pw).catch(() => null);
+      const old = await decryptData(site, pw).catch(e => { if (e.badPassword) throw new Error('密碼和網站上的資料不一樣，無法保留其他倉。請確認密碼。'); return null; });
       if (old) {
-        const now = new Set(parsed.rows.map(x => x[0]));
-        const lost = [...new Set(old.rows.map(x => x[0]))].filter(w => !now.has(w)).sort();
-        if (lost.length && !confirm(`這份新報表沒有 ${lost.map(w => `${w}${old.wh[w] || ''}`).join('、')}。\n\n上傳後，這些倉的資料會從大家的手機上消失。\n\n確定只用這份嗎？（建議按「取消」，回 ERP 匯出全部的倉）`)) {
-          $('makeMsg').textContent = '已取消。請匯出包含全部倉的報表再試一次。'; $('makeMsg').className = 'msg bad'; return null;
-        }
+        const keep = old.rows.filter(x => !newWh.has(x[0]) && KEEP_WH.includes(x[0]));
+        keep.forEach(x => { if (!obj.whDates[x[0]]) obj.whDates[x[0]] = (old.whDates && old.whDates[x[0]]) || old.date; if (!obj.wh[x[0]] && old.wh) obj.wh[x[0]] = old.wh[x[0]]; });
+        obj.rows = obj.rows.concat(keep);
       }
     }
-  } catch (e) { /* 連不上就不檢查 */ }
+  } catch (e) {
+    if (/密碼/.test(e.message)) { $('makeMsg').textContent = e.message; $('makeMsg').className = 'msg bad'; return null; }
+    if (newWh.size < KEEP_WH.length && !confirm('連不上網站，無法保留其他倉的資料。\n\n上傳後，這份報表沒有的倉會從大家的手機上消失。確定要上傳嗎？')) {
+      $('makeMsg').textContent = '已取消。'; $('makeMsg').className = 'msg bad'; return null;
+    }
+  }
+  obj.date = Object.values(obj.whDates).sort().pop() || obj.date;   // 最新的那個倉的日期
   $('makeMsg').textContent = '加密中…';
-  const { skipped, ignored, ...obj } = parsed;
   obj.uploadedAt = new Date().toISOString();
   const file = await encryptData(obj, pw);
   const back = await decryptData(file, pw);                 // 先自己解一次，確定檔案沒問題
   if (back.rows.length !== obj.rows.length) throw new Error('加密檢查失敗');
-  return { file, pw };
+  return { file, pw, updated: [...newWh].sort() };
 }
 $('make').onclick = async () => {
   const btn = $('make'); btn.disabled = true;
@@ -275,7 +282,7 @@ $('make').onclick = async () => {
     $('makeMsg').textContent = '上傳中…';
     const j = await putDataFile(p.file, p.pw);
     store.set('inv-upload-pass', p.pw);
-    $('makeMsg').innerHTML = `✓ <b>上傳完成</b>：${esc(j.date)} 的資料，${j.count} 筆。大家的手機打開（或按「檢查有沒有新資料」）就會更新。`;
+    $('makeMsg').innerHTML = `✓ <b>上傳完成</b>：已更新 <b>${esc(p.updated.join('、'))}</b> 倉（${esc(parsed.date)}），網站上共 ${j.count} 筆。大家的手機打開（或按「檢查有沒有新資料」）就會更新。`;
     $('makeMsg').className = 'msg good';
     $('siteNow').textContent = '網站上的資料：' + describe(p.file);
   } catch (err) {

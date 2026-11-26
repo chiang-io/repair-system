@@ -390,15 +390,20 @@ function selectedWh() {
 }
 function whLabel(w) { return (data.wh && data.wh[w]) || ''; }
 
+// 某個倉的資料日期（單倉更新後，各倉日期可能不同）
+const whDate = w => (data && data.whDates && data.whDates[w]) || (data && data.date) || '';
 function renderHeader() {
   const box = $('dateBox');
   if (!data) { box.hidden = true; return; }
   box.hidden = false;
   box.innerHTML = `<b>${esc(data.date)}</b>${esc(data.dateSource)}`;
   $('fileInfo').textContent = `目前：${data.rows.length} 筆，${fmtTime(data.uploadedAt)} 上傳`;
-  const d = daysAgo(data.date);
-  $('staleBox').innerHTML = d != null && d >= 7
-    ? `<div class="banner warn"><b>資料是 ${d} 天前的。</b>數量可能已經變了，有空請匯入新的報表。</div>` : '';
+  const wds = data.whDates ? Object.keys(data.whDates).sort((a, b) => whCmp(a, b)) : [];
+  const mixed = new Set(wds.map(w => data.whDates[w])).size > 1;
+  const oldest = wds.length ? wds.map(w => data.whDates[w]).sort()[0] : data.date;
+  const d = daysAgo(oldest);
+  $('staleBox').innerHTML = (mixed ? `<div class="meta" style="margin:8px 2px 0">各倉資料日期：${wds.map(w => `${esc(w)} ${esc(data.whDates[w].slice(5).replace('-', '/'))}`).join('・')}</div>` : '') +
+    (d != null && d >= 7 ? `<div class="banner warn"><b>${mixed ? '有倉的' : ''}資料是 ${d} 天前的。</b>數量可能已經變了，有空請匯入新的報表。</div>` : '');
 }
 function renderChips() {
   const all = whList(), picked = pickedWh();
@@ -886,8 +891,8 @@ const ymd = v => { const d = new Date(v); return isNaN(d) ? String(v || '').slic
 function repCheck(r) {
   const g = index && index.groups.find(x => x.code === r.code);
   const st = g && g.stock.find(s => s.wh === r.wh);
-  const newer = !!data && !!r.dataDate && ymd(r.dataDate) < data.date;
-  if (!st) return newer ? { kind: 'gone', text: `${data.date} 的新報表裡沒有這個品項` } : null;
+  const newer = !!data && !!r.dataDate && ymd(r.dataDate) < whDate(r.wh);
+  if (!st) return newer ? { kind: 'gone', text: `${whDate(r.wh)} 的新報表裡沒有這個品項` } : null;
   if (st.qty === r.sys && !newer) return null;                       // 還是同一份報表
   if (st.qty === r.actual) return { kind: 'fixed', text: `✅ 新報表已經是 ${fmt(st.qty)}，帳可能已修正，可以劃掉了` };
   return { kind: 'still', text: `新報表 ${fmt(st.qty)}，還是不對（跟實際${st.qty > r.actual ? '多' : '少'} ${fmt(Math.abs(st.qty - r.actual))}）` };
@@ -906,7 +911,7 @@ function openReport(code, wh) {
   repTarget = { code, name: g.name, wh, sys: st.qty };
   $('repName').textContent = g.name;
   $('repCode').textContent = `${code}　${wh} ${whLabel(wh)}`;
-  $('repSys').innerHTML = `系統數量：<b>${fmt(st.qty)}</b>　<span style="color:var(--muted);font-size:13px">（${esc(data.date)} 報表）</span>`;
+  $('repSys').innerHTML = `系統數量：<b>${fmt(st.qty)}</b>　<span style="color:var(--muted);font-size:13px">（${esc(whDate(wh))} 報表）</span>`;
   $('repQty').value = ''; $('repNote').value = ''; $('repLive').textContent = '';
   repReason = REASONS[0]; renderReasons();
   $('repDlg').showModal();
@@ -929,7 +934,7 @@ $('repForm').onsubmit = async e => {
   repSending = true;
   const btn = $('repForm').querySelector('[type=submit]'); btn.disabled = true; btn.textContent = '送出中…';
   try {
-    applyShared(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: repReason, note: $('repNote').value.trim(), dataDate: data.date } }));
+    applyShared(await repApi({ action: 'add', report: { ...repTarget, actual: v, reason: repReason, note: $('repNote').value.trim(), dataDate: whDate(repTarget.wh) } }));
     $('repDlg').close(); toast('已送出，大家都看得到了');
   } catch (err) {
     $('repLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有送出：連不上網路，請有訊號時再按一次。')}</span>`;
@@ -1049,7 +1054,7 @@ function openCount(code) {
   cdTarget = x;
   $('cdName').textContent = x.g.name;
   $('cdCode').textContent = `${x.g.code}　${countWh} ${whLabel(countWh)}`;
-  $('cdSys').innerHTML = `系統數量：<b>${fmt(x.st.qty)}</b>　<span style="color:var(--muted);font-size:13px">（${esc(data.date)} 報表）</span>`;
+  $('cdSys').innerHTML = `系統數量：<b>${fmt(x.st.qty)}</b>　<span style="color:var(--muted);font-size:13px">（${esc(whDate(countWh))} 報表）</span>`;
   const d = detailOf(countWh, x.g.code), auto = preparedTotal(x.g.code);
   if (d) { $('cdQty').value = d['地上']; $('cdPrep').value = d['已備貨'] || ''; }
   else { $('cdPrep').value = auto || ''; $('cdQty').value = x.c ? Math.max(0, x.c.actual - (auto || 0)) : ''; }   // 舊的盤點只有合計：扣掉已備貨當作地上
@@ -1091,7 +1096,7 @@ function saveCount(next) {
   if (isNaN(v) || floor < 0 || prep < 0 || !x) { $('cdQty').focus(); return; }
   const d = detailOf(countWh, x.g.code);
   tPut('盤點明細', { ...(d ? { id: d.id } : {}), 倉別: countWh, 編號: x.g.code, 地上: floor, 已備貨: prep }).catch(() => {});
-  const rec = { wh: countWh, code: x.g.code, name: x.g.name, sys: x.st.qty, actual: v, dataDate: data.date };
+  const rec = { wh: countWh, code: x.g.code, name: x.g.name, sys: x.st.qty, actual: v, dataDate: whDate(countWh) };
   const wh0 = countWh;
   countAction({ action: 'countSet', count: rec }, null, () => {
     counts = counts.filter(c => !(c.wh === countWh && c.code === x.g.code)).concat([{ ...rec, id: 'tmp', at: new Date().toISOString() }]);
