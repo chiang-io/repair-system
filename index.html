@@ -240,7 +240,7 @@ input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
         <div class="row"><button type="button" id="pasteRead" class="primary">讀取</button><span class="note">只認常用品項（重型）；每捆支數照預設，單子上有寫「40/捆」就照單子。</span></div>
         <div id="pasteOut"></div>
         <div class="row" id="pasteBar" hidden><input type="checkbox" id="pasteClear" checked><label for="pasteClear" style="flex:none">先清空清單</label>
-          <button type="button" id="pasteAdd" class="primary">全部加入清單</button></div>
+          <button type="button" id="pasteAdd" class="primary">全部加入清單</button><span id="pasteMsg" style="flex-basis:100%"></span></div>
       </details>
       <div class="addbar">
         <div class="row">
@@ -834,13 +834,16 @@ function curItem(){
   return p===b.pcs?b:{...b,pcs:p,...partialDims(b,p)};
 }
 // 總支數 → 拆成幾捆＋零頭，馬上顯示
+const lowPcs=(p,base)=>p<base*0.2;   // 每捆支數不到平常的 2 成 → 多半是填錯（例如 TB 填成 1 支一捆）
+const lowMsg=(p,base,u)=>`每${u}只有 ${p} 支？平常一${u} ${base} 支，可能填錯了。`;
 function catSplit(){
   const it=curItem(),t=Math.max(0,Math.floor(+$('catTotal').value||0));
   if(it.pallet){$('catSplit').textContent=t?`＝ ${t} ${it.box?'箱':'板'}`:'';return}
   if(!t){$('catSplit').innerHTML='<span class="note">填單子上的總支數，或直接填捆數。</span>';return}
   const full=Math.floor(t/it.pcs),rem=t%it.pcs;
   const u=it.per||'捆';
-  $('catSplit').textContent=`＝ ${full?`${full} ${u}`:''}${full&&rem?'＋':''}${rem?`零頭 ${rem} 支`:''}（每${u} ${it.pcs} 支，共約 ${fmt(t*it.unit)} kg）`;
+  const base=CAT_ITEMS[+$('catSel').value].pcs;
+  $('catSplit').innerHTML=esc(`＝ ${full?`${full} ${u}`:''}${full&&rem?'＋':''}${rem?`零頭 ${rem} 支`:''}（每${u} ${it.pcs} 支，共約 ${fmt(t*it.unit)} kg）`)+(lowPcs(it.pcs,base)?`<br><span class="bad">⚠ ${lowMsg(it.pcs,base,u)}</span>`:'');
 }
 function catInfo(){
   const it=curItem();
@@ -865,11 +868,11 @@ $('catFam').addEventListener('change',()=>{const f=$('catFam').value,cur=CAT_ITE
   if(famOf(cur)!==f)pickItem(CAT_ITEMS.findIndex(it=>famOf(it)===f));else renderSizes();});
 $('catSizes').addEventListener('click',e=>{const bt=e.target.closest('[data-i]');if(bt)pickItem(+bt.dataset.i);});
 $('catSel').addEventListener('change',()=>{$('catFam').value=famOf(CAT_ITEMS[+$('catSel').value]);renderSizes();});
-$('catSel').addEventListener('change',()=>{const b=CAT_ITEMS[+$('catSel').value];$('catPcs').value=b.pallet?'':b.pcs;
+$('catSel').addEventListener('change',()=>{const b=CAT_ITEMS[+$('catSel').value];$('catAdd').dataset.ok='';$('catPcs').value=b.pallet?'':b.pcs;
   if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*(b.pallet?1:b.pcs);catInfo();});
 $('catTotal').addEventListener('input',()=>{$('catQty').value='';catSplit();});
 $('catQty').addEventListener('input',()=>{const q=Math.max(0,Math.floor(+$('catQty').value||0));$('catTotal').value=q?q*curItem().pcs:'';catSplit();});
-$('catPcs').addEventListener('input',()=>{if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*curItem().pcs;catInfo();});
+$('catPcs').addEventListener('input',()=>{$('catAdd').dataset.ok='';if($('catQty').value!=='')$('catTotal').value=(+$('catQty').value||0)*curItem().pcs;catInfo();});
 $('catPcs').value=CAT_ITEMS[+$('catSel').value].pcs;
 function renderUW(){
   $('uwBody').innerHTML=CAT_ITEMS.filter(it=>!(it.pallet&&!it.per)).map(it=>{const i=CAT_ITEMS.indexOf(it);
@@ -926,6 +929,9 @@ $('catAdd').onclick=()=>{
   const it=curItem(),t=Math.max(0,Math.floor(+$('catTotal').value||0));
   const full=it.pallet?t:Math.floor(t/it.pcs),rem=it.pallet?0:t%it.pcs;
   if(!full&&!rem){$('catInfo').textContent='先填總共幾支（或幾捆）。';return}
+  const base=CAT_ITEMS[+$('catSel').value].pcs;
+  if(!it.pallet&&lowPcs(it.pcs,base)&&$('catAdd').dataset.ok!=='1'){$('catAdd').dataset.ok='1';$('catInfo').innerHTML=`<b class="bad">${lowMsg(it.pcs,base,it.per||'捆')}</b>確定沒錯的話，再按一次「加入清單」。`;return}
+  $('catAdd').dataset.ok='';
   if(full)addCatalog(it,full);
   if(rem)addCatalog(it,rem,false);
   $('catTotal').value='';$('catQty').value='';catSplit();
@@ -1040,6 +1046,7 @@ function pasteParse(txt){
   return {ok,bad};
 }
 function pasteSplitText(r){
+  if(lowPcs(r.pcs,r.it.pcs))return `⚠ ${lowMsg(r.pcs,r.it.pcs,r.it.per||'捆')}`;
   const p=Math.max(1,Math.floor(r.pcs)||1),t=Math.max(0,Math.floor(r.total)||0),full=Math.floor(t/p),rem=t%p,u=r.it.per||'捆';
   return !t?'—':`${full?`${full} ${u}`:''}${full&&rem?'＋':''}${rem?`零頭 ${rem} 支`:''}・約 ${fmt(t*r.it.unit+(r.it.tare||0)*Math.ceil(t/p))} kg`;
 }
@@ -1051,9 +1058,13 @@ function renderPaste(){
     (bad.length?`<p class="note" style="margin-top:6px"><b>沒認出來 ${bad.length} 行</b>（要的話用「＋ 自訂貨物」自己加）：</p><ul class="badl">${bad.map(([l,w])=>`<li>${esc(l)} <b>→ ${esc(w)}</b></li>`).join('')}</ul>`:'');
   $('pasteBar').hidden=!ok.length;
 }
-$('pasteRead').onclick=()=>{PASTE=pasteParse($('pasteTxt').value);renderPaste();};
-$('pasteOut').addEventListener('input',e=>{const t=e.target;if(!t.dataset.pk)return;const r=PASTE.ok[+t.dataset.pk];r[t.dataset.f]=Math.max(0,Math.floor(+t.value||0));$('pst'+t.dataset.pk).textContent=pasteSplitText(r);});
+$('pasteRead').onclick=()=>{$('pasteAdd').dataset.ok='';PASTE=pasteParse($('pasteTxt').value);renderPaste();};
+$('pasteOut').addEventListener('input',e=>{const t=e.target;if(!t.dataset.pk)return;const r=PASTE.ok[+t.dataset.pk];r[t.dataset.f]=Math.max(0,Math.floor(+t.value||0));$('pst'+t.dataset.pk).textContent=pasteSplitText(r);$('pasteAdd').dataset.ok='';$('pasteAdd').textContent='全部加入清單';});
 $('pasteAdd').onclick=()=>{
+  const low=PASTE.ok.filter(r=>r.total&&lowPcs(r.pcs,r.it.pcs));
+  if(low.length&&$('pasteAdd').dataset.ok!=='1'){$('pasteAdd').dataset.ok='1';$('pasteAdd').textContent='確定，全部加入';
+    $('pasteMsg').innerHTML=`<b class="bad">⚠ ${low.map(r=>esc(r.it.name.replace(/（.*$/,''))).join('、')} 每捆支數很少，可能填錯了。</b>上面表格可以改；確定沒錯就再按一次。`;return}
+  $('pasteAdd').dataset.ok='';$('pasteAdd').textContent='全部加入清單';$('pasteMsg').textContent='';
   if($('pasteClear').checked)cargo=[];
   let n=0;
   PASTE.ok.forEach(r=>{const p=Math.max(1,r.pcs||1),t=Math.max(0,r.total||0);if(!t)return;n++;
