@@ -156,6 +156,8 @@ footer a{color:var(--steel)}
 footer .row{margin:8px 0}
 footer .row.btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 /* 數量回報 */
+.srow .rep.pin{margin-right:-4px;padding:2px 7px;filter:grayscale(1);opacity:.55}
+.srow .rep.pin.on{filter:none;opacity:1;border-color:var(--good);background:var(--hl)}
 .srow .rep{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:2px 8px;font-size:13px;white-space:nowrap}
 .repnote{font-size:13px;color:var(--warn);margin:-2px 0 4px 36px}
 .repnote.ok{color:var(--good)}
@@ -497,12 +499,12 @@ function cardHtml(g, sel, tokens) {
       <div class="srow">
         <div class="wh ${MAIN_WH.includes(s.wh) ? 'main' : ''}"><span class="no mono">${esc(s.wh)}</span>${esc(whLabel(s.wh))}</div>
         <div class="qty ${s.qty < 0 ? 'neg' : s.qty === 0 ? 'zero' : ''}">${fmt(s.qty)}<small>支/個</small></div>
-        ${REPORT_API ? `<button class="rep" data-rep="${esc(g.code)}" data-wh="${esc(s.wh)}">回報</button>` : ''}
+        ${REPORT_API ? `<button class="rep pin ${pinOf(g.code, s.wh) ? 'on' : ''}" data-pin="${esc(g.code)}" data-wh="${esc(s.wh)}" aria-label="${pinOf(g.code, s.wh) ? '取消待點' : '加到待點'}">📌</button><button class="rep" data-rep="${esc(g.code)}" data-wh="${esc(s.wh)}">回報</button>` : ''}
       </div>${repNoteHtml(g.code, s.wh)}${(c => c ? `<div class="cntnote">盤點：${fmt(c.actual)}（${when(c.at)}）${c.actual === s.qty ? ' ✓' : ''}</div>` : '')(counts.find(c => c.wh === s.wh && c.code === g.code))}${(o => o ? `<div class="oknote">${okHtml(o)}</div>` : '')(lastOk(s.wh, g.code))}`).join('')}
       ${neg ? '<div class="negnote">帳上是負數，實際數量請以現場為準。</div>' : ''}
       <div class="srow">
         <span class="wt">${g.wt != null ? `單重 ${fmt(g.wt)} kg` : ''}${openPicks(g.code).length ? `<div class="picknote">備料中：${openPicks(g.code).map(p => `${esc(p.customer || '未填客戶')} ${fmt(p.qty)}`).join('、')}</div>` : ''}</span>
-        ${REPORT_API ? `<button class="add ${pinOf(g.code) ? 'on' : ''}" data-pin="${esc(g.code)}">${pinOf(g.code) ? '📌 待點中' : '📌 待點'}</button> <button class="add" data-add="${esc(g.code)}">＋ 加入備料</button>` : ''}
+        ${REPORT_API ? `<button class="add" data-add="${esc(g.code)}">＋ 加入備料</button>` : ''}
       </div>
     </div>
   </article>`;
@@ -544,7 +546,7 @@ function renderSearch() {
   const more = $('more'); if (more) more.onclick = () => { shown += PAGE; renderSearch(); };
   const sa = $('showAll'); if (sa) sa.onclick = () => setWh(whList());
   view.querySelectorAll('[data-add]').forEach(b => b.onclick = () => openPick(b.dataset.add));
-  view.querySelectorAll('[data-pin]').forEach(b => b.onclick = () => togglePin(b.dataset.pin));
+  view.querySelectorAll('[data-pin]').forEach(b => b.onclick = () => togglePin(b.dataset.pin, b.dataset.wh));
   view.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => openReport(b.dataset.rep, b.dataset.wh));
 }
 
@@ -891,17 +893,18 @@ function lastOk(wh, code) {
     .sort((a, b) => String(a['時間']).localeCompare(String(b['時間']))).pop() || null;
 }
 const okHtml = r => r ? `✓ ${esc(r['方式'])} ${when(r['時間'])}` : '';
-const pinOf = code => pinRows.find(r => String(r['編號']) === code) || null;
+// 待點是記「哪個倉的哪個品項」（舊版沒記倉別的，當作每個倉都待點）
+const pinOf = (code, wh) => pinRows.find(r => String(r['編號']) === code && (!r['倉別'] || String(r['倉別']).padStart(2, '0') === wh)) || null;
 async function tDel(table, id) { setTable(table, await tApi('tDel', table, { id })); }
 // 先在畫面上變（不用等 Google 2～3 秒），再在背景存；沒存成功就變回來
-async function togglePin(code) {
-  const p = pinOf(code), before = pinRows.slice();
+async function togglePin(code, wh) {
+  const p = pinOf(code, wh), before = pinRows.slice();
   const redraw = () => { if (tab === 'search') renderSearch(); else if (tab === 'count') renderCount(); };
-  pinRows = p ? pinRows.filter(r => r !== p) : pinRows.concat([{ id: 'tmp', 編號: code }]);
+  pinRows = p ? pinRows.filter(r => r !== p) : pinRows.concat([{ id: 'tmp', 編號: code, 倉別: wh }]);
   redraw();
-  toast(p ? '已從待點拿掉' : '📌 已加到待點，盤點分頁可以集中點');
+  toast(p ? `已從 ${wh} 的待點拿掉` : `📌 已加到 ${wh} ${whLabel(wh)}的待點`);
   try {
-    if (p) await tDel('待點', p.id); else await tPut('待點', { 編號: code });
+    if (p) await tDel('待點', p.id); else await tPut('待點', { 編號: code, 倉別: wh });
   } catch (e) {
     pinRows = before; store.set('inv-t-pin', pinRows);
     toast(e.code ? e.message : '沒有網路，剛剛的待點沒有存到，請等一下再按一次');
@@ -1053,7 +1056,7 @@ function countItems() {
 function countVisible(items) {
   const tokens = $('countQ').value.trim().split(/\s+/).map(norm).filter(Boolean);
   return items.filter(x =>
-    (countFilter === 'all' || (countFilter === 'pin' && pinOf(x.g.code)) || (countFilter === 'todo' && !x.c) || (countFilter === 'done' && x.c) || (countFilter === 'diff' && x.c && x.c.actual !== x.st.qty)) &&
+    (countFilter === 'all' || (countFilter === 'pin' && pinOf(x.g.code, countWh)) || (countFilter === 'todo' && !x.c) || (countFilter === 'done' && x.c) || (countFilter === 'diff' && x.c && x.c.actual !== x.st.qty)) &&
     tokens.every(t => x.g.hay.includes(t)));
 }
 function renderCount() {
@@ -1072,7 +1075,7 @@ function renderCount() {
   const done = items.filter(x => x.c).length, diff = items.filter(x => x.c && x.c.actual !== x.st.qty).length;
   $('countProg').innerHTML = `<div class="prog"><i style="width:${items.length ? done / items.length * 100 : 0}%"></i></div>
     <div class="meta" style="margin:2px 0 6px">已盤 <b>${done}</b> / ${items.length} 項${diff ? `，<b style="color:var(--bad)">${diff} 項有差異</b>` : ''}${repState.loading ? '・更新中…' : ''}</div>`;
-  const nPin = items.filter(x => pinOf(x.g.code)).length;
+  const nPin = items.filter(x => pinOf(x.g.code, countWh)).length;
   $('countFilters').innerHTML = COUNT_FILTERS.filter(([k]) => k !== 'pin' || nPin || countFilter === 'pin')
     .map(([k, t]) => `<button class="chip" data-cf="${k}" aria-pressed="${k === countFilter}">${t}${k === 'pin' ? `（${nPin}）` : ''}</button>`).join('');
   $('countFilters').querySelectorAll('[data-cf]').forEach(b => b.onclick = () => { countFilter = b.dataset.cf; countShown = 80; renderCount(); });
@@ -1081,7 +1084,7 @@ function renderCount() {
     vis.slice(0, countShown).map(x => {
       const st = !x.c ? '' : x.c.actual === x.st.qty ? 'ok' : 'bad';
       return `<div class="crow ${st}" data-cc="${esc(x.g.code)}" role="button" tabindex="0">
-        <div class="cn"><div class="nm">${pinOf(x.g.code) ? '📌 ' : ''}${esc(x.g.name)}</div><div class="cd mono">${esc(x.g.code)}</div></div>
+        <div class="cn"><div class="nm">${pinOf(x.g.code, countWh) ? '📌 ' : ''}${esc(x.g.name)}</div><div class="cd mono">${esc(x.g.code)}</div></div>
         <div class="cq">系統 ${fmt(x.st.qty)}<br>${x.c ? `實盤 <b>${fmt(x.c.actual)}</b>${st === 'bad' ? `<br>${diffHtml({ actual: x.c.actual, sys: x.st.qty })}` : ' ✓'}${(dd => dd && Number(dd['已備貨']) ? `<br>地上 ${fmt(Number(dd['地上']))}＋備貨 ${fmt(Number(dd['已備貨']))}` : '')(detailOf(countWh, x.g.code))}` : '還沒盤'}</div>
         ${(() => {
           const o = lastOk(countWh, x.g.code);
@@ -1200,7 +1203,7 @@ function saveCount(next) {
   countAction({ action: 'countSet', count: rec }, null, () => {
     counts = counts.filter(c => !(c.wh === countWh && c.code === x.g.code)).concat([{ ...rec, id: 'tmp', at: new Date().toISOString() }]);
   }).then(() => {
-    const pp = pinOf(x.g.code); if (pp) tDel('待點', pp.id).then(() => { if (tab === 'count') renderCount(); }).catch(() => {});   // 點完就從待點拿掉
+    const pp = pinOf(x.g.code, wh0); if (pp) tDel('待點', pp.id).then(() => { if (tab === 'count') renderCount(); }).catch(() => {});   // 點完就從待點拿掉
     // 點到的數量和系統一樣 → 記下「盤點正確」（在盤點存好之後才記，時間才會在盤點之後）
     if (v === x.st.qty && counts.some(c => c.wh === wh0 && c.code === x.g.code && c.id !== 'tmp'))
       return tPut('確認正確', { 倉別: wh0, 編號: x.g.code, 方式: '盤點正確', 數量: v }).then(() => { if (tab === 'count') renderCount(); });
