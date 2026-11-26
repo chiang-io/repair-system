@@ -875,13 +875,20 @@ function lastOk(wh, code) {
 const okHtml = r => r ? `✓ ${esc(r['方式'])} ${when(r['時間'])}` : '';
 const pinOf = code => pinRows.find(r => String(r['編號']) === code) || null;
 async function tDel(table, id) { setTable(table, await tApi('tDel', table, { id })); }
+// 先在畫面上變（不用等 Google 2～3 秒），再在背景存；沒存成功就變回來
 async function togglePin(code) {
-  const p = pinOf(code);
+  const p = pinOf(code), before = pinRows.slice();
+  const redraw = () => { if (tab === 'search') renderSearch(); else if (tab === 'count') renderCount(); };
+  pinRows = p ? pinRows.filter(r => r !== p) : pinRows.concat([{ id: 'tmp', 編號: code }]);
+  redraw();
+  toast(p ? '已從待點拿掉' : '📌 已加到待點，盤點分頁可以集中點');
   try {
-    if (p) { await tDel('待點', p.id); toast('已從待點拿掉'); }
-    else { await tPut('待點', { 編號: code }); toast('📌 已加到待點，盤點分頁可以集中點'); }
-  } catch (e) { toast(e.code ? e.message : '沒有網路，沒有存到，請等一下再試'); }
-  if (tab === 'search') renderSearch(); else if (tab === 'count') renderCount();
+    if (p) await tDel('待點', p.id); else await tPut('待點', { 編號: code });
+  } catch (e) {
+    pinRows = before; store.set('inv-t-pin', pinRows);
+    toast(e.code ? e.message : '沒有網路，剛剛的待點沒有存到，請等一下再按一次');
+  }
+  redraw();
 }
 async function tPut(table, row) { setTable(table, await tApi('tPut', table, { row })); }
 // 某一筆備料已經備了幾支：就是加入時填的數量（舊資料若另外記過「已備」，以那個為準）
