@@ -119,6 +119,8 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .crow.ok{border-left-color:var(--good)} .crow.bad{border-left-color:var(--bad)}
 .crow .cn{flex:1;min-width:0} .crow .cn .nm{font-weight:700;font-size:15px;line-height:1.35;word-break:break-word}
 .crow .cn .cd{font-size:13px;color:var(--steel)}
+.whtag{display:inline-block;margin-left:8px;padding:0 6px;border-radius:6px;background:var(--steel);color:#fff;font-family:"Noto Sans TC",sans-serif;font-size:12px}
+.chip .pinn{margin-left:6px;font-size:12px;font-weight:700}
 .crow .cq{text-align:right;font-size:13px;color:var(--muted);white-space:nowrap}
 .crow .cq b{font-size:18px;color:var(--ink)}
 .prog{height:10px;border-radius:99px;background:var(--sunk);overflow:hidden;margin:6px 0 2px}
@@ -1066,7 +1068,9 @@ function renderCount() {
   if (!whs.includes(countWh)) countWh = whs.includes('06') ? '06' : whs[0];
   // 每個倉正在盤的項數，例如「01 半成品倉（5）」
   const nByWh = {}; counts.forEach(c => { nByWh[c.wh] = (nByWh[c.wh] || 0) + 1; });
-  $('countWhs').innerHTML = whs.map(w => `<button class="chip" data-cw="${esc(w)}" aria-pressed="${w === countWh}">${esc(w)} ${esc(whLabel(w))}${nByWh[w] ? `<b style="margin-left:4px">（${nByWh[w]}）</b>` : ''}</button>`).join('');
+  // 每個倉有幾項待點（📌3），一眼看出哪個倉要去點
+  const pinByWh = {}; whs.forEach(w => { pinByWh[w] = index.groups.filter(g => g.stock.some(st => st.wh === w) && pinOf(g.code, w)).length; });
+  $('countWhs').innerHTML = whs.map(w => `<button class="chip" data-cw="${esc(w)}" aria-pressed="${w === countWh}">${esc(w)} ${esc(whLabel(w))}${nByWh[w] ? `<b style="margin-left:4px">（${nByWh[w]}）</b>` : ''}${pinByWh[w] ? `<span class="pinn">📌${pinByWh[w]}</span>` : ''}</button>`).join('');
   $('countWhs').querySelectorAll('[data-cw]').forEach(b => b.onclick = () => { countWh = b.dataset.cw; store.set('inv-count-wh', countWh); countShown = 80; renderCount(); });
   if (!countsOk) {
     $('countProg').innerHTML = `<div class="banner warn"><b>Google 那邊的程式還沒更新。</b>請照說明在 Apps Script 貼上新程式並重新部署，盤點才能用。</div>`;
@@ -1081,11 +1085,12 @@ function renderCount() {
     .map(([k, t]) => `<button class="chip" data-cf="${k}" aria-pressed="${k === countFilter}">${t}${k === 'pin' ? `（${nPin}）` : ''}</button>`).join('');
   $('countFilters').querySelectorAll('[data-cf]').forEach(b => b.onclick = () => { countFilter = b.dataset.cf; countShown = 80; renderCount(); });
   const vis = countVisible(items);
-  $('countList').innerHTML = (vis.length ? '' : `<div class="banner">${countFilter === 'todo' && done === items.length ? '這個倉都盤完了 🎉' : countFilter === 'pin' ? '待點的都點完了 🎉' : '沒有符合的品項。'}</div>`) +
+  $('countList').innerHTML = (countFilter === 'pin' && vis.length ? `<div class="meta" style="margin:8px 2px 2px;font-weight:700;color:var(--ink)">📌 ${esc(countWh)} ${esc(whLabel(countWh))}的待點（${vis.length}）</div>` : '') +
+    (vis.length ? '' : `<div class="banner">${countFilter === 'todo' && done === items.length ? '這個倉都盤完了 🎉' : countFilter === 'pin' ? `${esc(countWh)} ${esc(whLabel(countWh))}的待點都點完了 🎉` : '沒有符合的品項。'}</div>`) +
     vis.slice(0, countShown).map(x => {
       const st = !x.c ? '' : x.c.actual === x.st.qty ? 'ok' : 'bad';
       return `<div class="crow ${st}" data-cc="${esc(x.g.code)}" role="button" tabindex="0">
-        <div class="cn"><div class="nm">${pinOf(x.g.code, countWh) ? '📌 ' : ''}${esc(x.g.name)}</div><div class="cd mono">${esc(x.g.code)}</div></div>
+        <div class="cn"><div class="nm">${pinOf(x.g.code, countWh) ? '📌 ' : ''}${esc(x.g.name)}</div><div class="cd mono">${esc(x.g.code)}${countFilter === 'pin' ? `<span class="whtag">${esc(countWh)} ${esc(whLabel(countWh))}</span>` : ''}</div></div>
         <div class="cq">系統 ${fmt(x.st.qty)}<br>${x.c ? `實盤 <b>${fmt(x.c.actual)}</b>${st === 'bad' ? `<br>${diffHtml({ actual: x.c.actual, sys: x.st.qty })}` : ' ✓'}${(dd => dd && Number(dd['已備貨']) ? `<br>地上 ${fmt(Number(dd['地上']))}＋備貨 ${fmt(Number(dd['已備貨']))}` : '')(detailOf(countWh, x.g.code))}` : '還沒盤'}</div>
         ${(() => {
           const o = lastOk(countWh, x.g.code);

@@ -1,7 +1,7 @@
 'use strict';
 // 庫存查詢的離線快取：頁面先試網路（拿到最新版），沒網路時用快取。
 // 讀檔工具（pdf.js、SheetJS）與字型第一次用到時存起來，之後沒網路也能匯入。
-const CACHE = 'inventory-v26';
+const CACHE = 'inventory-v27';
 const SHELL = ['./', './index.html', './common.js?v=6', './config.js?v=6', './upload.html', './manifest.webmanifest', './icons/icon-192.png', './icons/favicon-32.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
