@@ -130,6 +130,8 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .oknote{font-size:13px;color:var(--good);margin:-2px 0 4px 36px}
 .crow{cursor:pointer;flex-wrap:wrap}
 .crow .cok{flex-basis:100%;display:flex;justify-content:flex-end;font-size:13px;color:var(--good);margin-top:2px}
+.crow .cok{gap:8px;align-items:center}
+.crow .cok button.unpin{border-color:var(--line);color:var(--muted)}
 .crow .cok button{border:1.5px solid var(--good);background:transparent;color:var(--good);border-radius:8px;padding:3px 10px;font-size:13px}
 .calcin{position:relative}
 .calcin .eq{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--steel);font-weight:700;font-size:16px;pointer-events:none}
@@ -1087,10 +1089,12 @@ function renderCount() {
         <div class="cq">系統 ${fmt(x.st.qty)}<br>${x.c ? `實盤 <b>${fmt(x.c.actual)}</b>${st === 'bad' ? `<br>${diffHtml({ actual: x.c.actual, sys: x.st.qty })}` : ' ✓'}${(dd => dd && Number(dd['已備貨']) ? `<br>地上 ${fmt(Number(dd['地上']))}＋備貨 ${fmt(Number(dd['已備貨']))}` : '')(detailOf(countWh, x.g.code))}` : '還沒盤'}</div>
         ${(() => {
           const o = lastOk(countWh, x.g.code);
+          // 待點的品項：可以直接移出待點（按錯時用）
+          const unpin = pinOf(x.g.code, countWh) ? `<button class="unpin" data-unpin="${esc(x.g.code)}">移出待點</button>` : '';
           // 盤點的數字已經和系統一樣，但這次盤點之後還沒記錄確認 → 卡片右下角小按鈕（通常是 ERP 調整好、上傳新庫存之後）
           if (x.c && x.c.actual === x.st.qty && !(o && String(o['時間']) >= String(x.c.at)))
-            return `<div class="cok"><button data-ok="${esc(x.g.code)}">記錄調整正確</button></div>`;
-          return o ? `<div class="cok">${okHtml(o)}</div>` : '';
+            return `<div class="cok">${unpin}<button data-ok="${esc(x.g.code)}">記錄調整正確</button></div>`;
+          return o || unpin ? `<div class="cok">${unpin}${o ? `<span>${okHtml(o)}</span>` : ''}</div>` : '';
         })()}
       </div>`;
     }).join('') + (vis.length > countShown ? `<button class="more" id="countMore">再顯示 ${Math.min(80, vis.length - countShown)} 項（共 ${vis.length}）</button>` : '');
@@ -1098,6 +1102,7 @@ function renderCount() {
     b.onclick = () => openCount(b.dataset.cc);
     b.onkeydown = e => { if (e.key === 'Enter') openCount(b.dataset.cc); };
   });
+  $('countList').querySelectorAll('[data-unpin]').forEach(b => b.onclick = ev => { ev.stopPropagation(); togglePin(b.dataset.unpin, countWh); });
   $('countList').querySelectorAll('[data-ok]').forEach(b => b.onclick = async ev => {
     ev.stopPropagation();   // 不要同時打開輸入數量的視窗
     const x = countItems().find(i => i.g.code === b.dataset.ok); if (!x) return;
