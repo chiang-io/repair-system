@@ -125,6 +125,11 @@ mark{background:var(--hl);color:inherit;border-radius:3px;padding:0 1px}
 .crow .cq b{font-size:18px;color:var(--ink)}
 .prog{height:10px;border-radius:99px;background:var(--sunk);overflow:hidden;margin:6px 0 2px}
 .prog i{display:block;height:100%;background:var(--good)}
+#pickQ{width:100%;height:46px;border:1.5px solid var(--steel);border-radius:10px;background:var(--surface);padding:0 12px;font-size:16px;margin:10px 0 4px}
+.phit{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 12px;margin:4px 0}
+.phit .nm{flex:1;min-width:0;font-weight:700;font-size:15px;word-break:break-word}
+.phit .cd{font-size:13px;color:var(--steel);font-weight:400}
+.phit .go{color:var(--steel);font-size:14px;white-space:nowrap}
 #countQ{width:100%;height:44px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);padding:0 12px;font-size:16px;margin:8px 0 2px}
 .pprog{height:6px;border-radius:99px;background:var(--sunk);overflow:hidden;margin:4px 0 2px;max-width:220px}
 .pprog i{display:block;height:100%;background:var(--good)}
@@ -245,6 +250,10 @@ dialog .btnrow{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
     </div>
     <div id="staleBox"></div>
     <div id="searchView"></div>
+    <div id="pickAddBox" hidden>
+      <input id="pickQ" type="text" inputmode="search" autocomplete="off" placeholder="＋ 新增備料：打品名或編號">
+      <div id="pickHits"></div>
+    </div>
     <div id="pickView" hidden></div>
     <div id="repView" hidden></div>
     <div id="countView" hidden>
@@ -756,6 +765,7 @@ $('pickForm').onsubmit = async e => {
       store.set('inv-customers-hidden', store.get('inv-customers-hidden', []).filter(c => c !== customer));
     }
     $('pickDlg').close();
+    if (tab === 'pick') { $('pickQ').value = ''; renderPickHits(); }
     toast(`已加入${customer ? ` ${customer}` : ''}的備料：已備 ${fmt(qty)}`);
   } catch (err) {
     $('pickLive').innerHTML = `<span style="color:var(--bad)">${esc(err.code ? err.message : '沒有加入：連不上網路，請有訊號時再按一次。')}</span>`;
@@ -779,7 +789,7 @@ function renderPick() {
   if (!picksOk) {
     v.innerHTML = head + `<div class="banner warn"><b>Google 那邊的程式還沒更新。</b>請照說明在 Apps Script 貼上新程式並重新部署，備料清單才能用。</div>`;
   } else if (!picks.length) {
-    v.innerHTML = head + `<div class="banner">備料清單是空的。在「查詢」找到東西後，按「＋ 加入備料」，填數量和客戶。</div>`;
+    v.innerHTML = head + `<div class="banner">備料清單是空的。在上面的框打品名或編號，就可以加入。</div>`;
   } else {
     const groups = new Map();
     picks.forEach(p => { const k = p.customer || ''; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); });
@@ -840,6 +850,22 @@ function renderPick() {
   }
   $('pickReload').onclick = () => loadReports(true);
 }
+// 備料清單分頁直接新增：打品名或編號 → 點選品項 → 跳出加入視窗
+function renderPickHits() {
+  if (!index || index.data !== data) buildIndex();
+  const raw = $('pickQ').value.trim(), box = $('pickHits');
+  if (!raw) { box.innerHTML = ''; return; }
+  const tokens = raw.split(/\s+/).map(norm).filter(Boolean);
+  let hit = index.groups.filter(g => tokens.every(t => g.hay.includes(t)));
+  if (!hit.length) hit = fuzzyFind(raw);
+  box.innerHTML = hit.length
+    ? hit.slice(0, 8).map(g => `<button class="phit" data-ph="${esc(g.code)}"><span class="nm">${esc(g.name)}<br><span class="cd mono">${esc(g.code)}</span></span><span class="go">＋ 加入</span></button>`).join('') +
+      (hit.length > 8 ? `<div class="meta">還有 ${hit.length - 8} 種，多打幾個字縮小範圍</div>` : '')
+    : '<div class="meta">找不到，試試少打幾個字</div>';
+  box.querySelectorAll('[data-ph]').forEach(b => b.onclick = () => openPick(b.dataset.ph));
+}
+let pickQTimer;
+$('pickQ').oninput = () => { clearTimeout(pickQTimer); pickQTimer = setTimeout(renderPickHits, 120); };
 
 /* ---------- 數量回報（大家共用，存在 Google 試算表） ---------- */
 function saveReports() {
@@ -1242,6 +1268,7 @@ function setTab(t) {
   [['search', 'tabSearch', 'searchView'], ['pick', 'tabPick', 'pickView'], ['rep', 'tabRep', 'repView'], ['count', 'tabCount', 'countView']].forEach(([k, b, v]) => {
     $(b).setAttribute('aria-selected', k === t); $(v).hidden = k !== t;
   });
+  $('pickAddBox').hidden = t !== 'pick' || !REPORT_API;
   t === 'pick' ? renderPick() : t === 'rep' ? renderReports() : t === 'count' ? renderCount() : renderSearch();
 }
 $('tabSearch').onclick = () => setTab('search');
